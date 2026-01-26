@@ -1,0 +1,30 @@
+; minim.mdp - used as input into grompp to generate em.tpr
+; Parameters describing what to do, when to stop and what to save
+
+;-------------------------------------
+;能量最小化核心参数
+;-------------------------------------
+integrator  = steep         ; Algorithm (steep = steepest descent minimization)      ;最陡下降法
+; integrator  = cg      ;可选，共轭梯度法（收敛更快，可在steep后切换使用）
+emtol       = 1000.0        ; Stop minimization when the maximum force < 1000.0 kJ/mol/nm      ;最大力收敛阈值，Amber推荐<=10。
+emstep      = 0.01          ; Minimization step size
+nsteps      = 50000         ; Maximum number of (minimization) steps to perform      ;最大优化步数（确保足够步数以收敛到emto）
+
+;-------------------------------------
+;非键相互作用参数
+;-------------------------------------
+; Parameters describing how to find the neighbors of each atom and how to calculate the interactions
+nstlist         = 1         ; Frequency to update the neighbor list and long range forces      ;邻居列表更新频率
+cutoff-scheme   = Verlet    ; Buffered neighbor searching      ;Verlet截断方案（自动管理邻居列表，推荐）
+ns_type         = grid      ; Method to determine neighbor list (simple, grid)
+coulombtype     = PME       ; Treatment of long range electrostatic interactions      ;PME处理长程静电
+rcoulomb        = 1.0       ; Short-range electrostatic cut-off      ;直接空间静电截断，与rvdw对齐
+rvdw            = 1.0       ; Short-range Van der Waals cut-off      ;范德华截断半径
+pbc             = xyz       ; Periodic Boundary Conditions in all 3 dimensions
+
+;-------------------------------------
+;约束算法
+;-------------------------------------
+;本次未使用
+;constraints		=h-bonds        ;仅约束氢键（Amber立场参数化基于此设置）
+;constraint_algorithm	=LINCS       ;LINCS算法
