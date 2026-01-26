@@ -1,127 +1,233 @@
 # GROMACS MD模拟配置文件模板
-# 复制此文件并修改参数后运行: ./run_md_pipeline.sh your_config.conf
+# 作者：欧阳梓豪 & TraeCN
+# 版本: 1.0.0
+# 说明: 复制此文件并修改参数后运行 ./run_md_pipeline.sh your_config.conf
+# 注意: 所有路径可以使用绝对路径或相对路径（相对于脚本运行目录）
 
-# ========== MD计算必需参数 ==========
 
-# 如不是pdb格式，需要转换为pdb格式
-# 蛋白质列表（英文逗号","分隔的PDB文件路径，必须包含完整的文件名和.pdb后缀）
-# 可以使用相对路径或者绝对路径
-# 绝对路径示例: PROTEIN_LIST="/path/to/protein1.pdb,/path/to/protein2.pdb,/path/to/protein3.pdb"
+# ======================================
+# 1. 基本路径配置
+# ======================================
+
+# 蛋白质列表：英文逗号","分隔的PDB文件路径
+# 必须包含完整的文件名和.pdb后缀
+# 支持相对路径或绝对路径
+# 仅支持pdb格式，如不是pdb格式，需要转换为pdb格式
+# 示例：PROTEIN_LIST="/path/to/protein1.pdb,./relative/path/protein2.pdb"
 PROTEIN_LIST="1AKI.pdb,pro/1AKI-1.pdb"
 
-# 工作目录（所有输出将在此目录下创建）
-# 绝对路径
+# 工作目录：所有模拟输出将在此目录下创建
+# 建议使用绝对路径，避免路径问题
 WORK_DIR="/mnt/d/BioAnalysisFiles/gromacs_files/MD/test1"
 
-# MDP文件目录（包含ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp）
-# 绝对路径或相对路径
+# MDP文件目录：包含模拟所需的所有.mdp文件
+# 需包含：ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp
+# 支持相对路径或绝对路径
+# ions.mdp 是溶剂化阶段的配置文件
+# minim.mdp 是能量最小化阶段的配置文件
+# nvt.mdp, npt.mdp 是预平衡阶段的的配置文件
+# md.mdp 是分子动力学模拟阶段的配置文件
 MDP_DIR="mdp"
 
-# 水模型选择
+
+# ======================================
+# 2. 力场和水模型配置
+# ======================================
+
+# 水模型选择：决定模拟中水分子的力场参数
+# 常用选项：tip3p, spce, tip4p, tip5p等
+# 需与所选力场兼容
 WATER_MODEL="tip3p"
 
-# 力场选择
+# 力场选择：决定蛋白质、溶剂和离子的相互作用参数
+# 常用选项：amber99sb-ildn, charmm36, opls-aa, gromos54a7等
+# 不同力场适用于不同的模拟体系和研究目的
 FORCE_FIELD="amber99sb-ildn"
 
-# 盒子类型
-# 立方体为cubic，截角八面体为veclen，十二面体为rhombic dodecahedron
+
+# ======================================
+# 3. 盒子和溶剂化配置
+# ======================================
+
+# 盒子类型：定义模拟盒子的形状
+# 选项：
+#   cubic：立方体盒子，最简单常用
+#   dodecahedron：十二面体盒子，更高效的空间利用
+#   octahedron：八面体盒子
 BOX_TYPE="cubic"
 
-# 盒子边界距离（nm）
+# 盒子边界距离：蛋白质表面到盒子边界的最小距离（单位：nm）
+# 推荐值：1.0-1.5 nm，确保蛋白质与周期性镜像之间有足够距离
 BOX_DISTANCE="1.2"
 
-# 离子浓度（M）
-ION_CONCENTRATION="0.15"
-
-# 正离子名称（默认：NA）
-POSITIVE_ION="NA"
-
-# 负离子名称（默认：CL）
-NEGATIVE_ION="CL"
-
-# ==========MD 计算 可选参数 ==========
-
-# 溶剂模型文件（默认：spc216.gro）
+# 溶剂模型文件：用于溶剂化的水分子结构文件
+# 通常由GROMACS安装提供，无需修改
 SOLVENT_FILE="spc216.gro"
 
-# 使用的线程数（MD模拟时使用，默认：自动检测）
+
+# ======================================
+# 4. 离子配置
+# ======================================
+
+# 离子浓度：模拟体系中的盐浓度（单位：M）
+# 常用值：0.15 M（生理盐水浓度）
+ION_CONCENTRATION="0.15"
+
+# 正离子名称：用于中和体系电荷的正离子类型
+# 常用选项：NA, K, CA等
+POSITIVE_ION="NA"
+
+# 负离子名称：用于中和体系电荷的负离子类型
+# 常用选项：CL, F, BR等
+NEGATIVE_ION="CL"
+
+
+# ======================================
+# 5. 计算资源配置
+# ======================================
+
+# 使用的线程数：MD模拟时使用的CPU线程数
+# 不设置则自动检测可用线程数
 # NUM_THREADS="8"
 
-# GPU ID（如果有GPU加速，默认：不使用）
+# GPU ID：如果有GPU加速，指定使用的GPU设备ID
+# 多个GPUID无需分隔，如："012"
 # GPU_ID="0"
 
-# 最大警告数量（grompp，默认：0）
-# MAXWARN="0"
+# 最大警告数量：grompp命令允许的最大警告数
+# 0表示不允许任何警告，建议先设为5排查问题
+# MAXWARN="5"
 
-# 是否在能量最小化时详细输出（默认：是）
+
+# ======================================
+# 6. 模拟控制参数
+# ======================================
+
+# 是否在能量最小化时详细输出
+# true：输出详细的能量变化信息
+# false：仅输出必要信息
 EM_VERBOSE="false"
 
-# 是否在平衡时详细输出（默认：是）
+# 是否在平衡模拟时详细输出
+# true：输出详细的温度、压力变化信息
+# false：仅输出必要信息
 EQUIL_VERBOSE="false"
 
-# MD模拟额外参数
-# MD_EXTRA_ARGS=""
-
-# 是否跳过已存在的步骤（默认：是）
+# 是否跳过已存在的步骤
+# true：如果步骤的输出文件已存在，则跳过该步骤
+# false：无论文件是否存在，都重新运行该步骤
 SKIP_EXISTING="true"
 
-# 检查点间隔（分钟，默认：15）
+# 检查点间隔：MD模拟中保存检查点的时间间隔（分钟）
+# 用于中断后重启模拟，建议设置为15-30分钟
 # CHECKPOINT_INTERVAL="15"
 
-# ========== 轨迹校正参数 ==========
 
-# 是否执行轨迹周期性校正（true/false，默认：true）
+# ======================================
+# 7. 轨迹校正参数
+# ======================================
+
+# 是否执行轨迹周期性校正
+# true：对模拟轨迹进行周期性边界条件校正
+# false：直接使用原始轨迹
 # PERFORM_TRAJ_CORRECTION="true"
 
-# 轨迹校正方法
-#默认（分子周期性校正 + 居中：pbc_mol）
-#可选（无跳跃周期性校正+ 居中：pbc_nojump）（原子周期性校正+ 居中：pbc_atom）
+# 轨迹校正方法：定义如何处理周期性边界条件
+# 选项：
+#   pbc_nojump：无跳跃校正，适用于大多数体系
+#   pbc_atom：原子级校正
+#   pbc_mol：分子级校正，默认选项
+#   pbc_none：不校正
 # TRAJ_CORRECTION_METHOD="pbc_mol"
 
-# 校正时用于居中的组（默认：Protein）
+# 校正时用于居中的组：将该组居中到盒子中心
+# 常用选项：Protein, System, C-alpha等
 # CENTER_GROUP="Protein"
 
-# 校正后输出的组（默认：System）
+# 校正后输出的组：最终保存的轨迹包含哪些原子组
+# 常用选项：System（保存整个体系）
 # OUTPUT_GROUP="System"
 
-# ========== MD分析参数 ==========
 
-# 分析输出目录（默认：analysis）
+# ======================================
+# 8. MD分析参数（预留）
+# ======================================
+
+# 分析输出目录：用于保存分析结果的目录
 # ANALYSIS_DIR="analysis"
 
-# 轨迹文件后缀（默认：_md_noPBC.xtc）
+# 轨迹文件后缀：校正后轨迹文件的后缀名
 # TRAJ_SUFFIX="_md_noPBC.xtc"
 
-# TPR文件后缀（默认：_md.tpr）
+# TPR文件后缀：用于分析的TPR文件后缀名
 # TPR_SUFFIX="_md.tpr"
 
-# 是否跳过已存在的分析结果（true/false，默认：true）
+# 是否跳过已存在的分析结果
 # SKIP_EXISTING="true"
 
-# 分析时使用的索引组（可选，根据需要设置）
-RMSD_fit_GROUP="C-alpha"
-RMSD_cal_GROUP="C-alpha"
-RMSF_cal_GROUP="C-alpha"
-# GYRATE_cal_GROUP="Protein"
-# HBOND_Ref_GROUP="MainChain+H"
-# HBOND_Target_GROUP="MainChain+H"
-DSSP_cal_GROUP="Protein"
+# 分析时使用的索引组：根据需要设置不同分析使用的原子组
+# RMSD分析相关
+RMSD_fit_GROUP="C-alpha"   # RMSD拟合组：用于结构对齐的原子组
+RMSD_cal_GROUP="C-alpha"   # RMSD计算组：用于计算RMSD的原子组
 
-# 索引组编号和名称
-# Group     0 (         System)
-# Group     1 (        Protein)
-# Group     2 (      Protein-H)
-# Group     3 (        C-alpha)
-# Group     4 (       Backbone)
-# Group     5 (      MainChain)
-# Group     6 (   MainChain+Cb)
-# Group     7 (    MainChain+H)
-# Group     8 (      SideChain)
-# Group     9 (    SideChain-H)
-# Group    10 (    Prot-Masses)
-# Group    11 (    non-Protein)
-# Group    12 (          Water)
-# Group    13 (            SOL)
-# Group    14 (      non-Water)
-# Group    15 (            Ion)
-# Group    16 ( Water_and_ions)
+# RMSF分析相关
+RMSF_cal_GROUP="C-alpha"   # RMSF计算组：用于计算原子波动的原子组
+
+# 回旋半径分析相关
+# GYRATE_cal_GROUP="Protein"  # 回旋半径计算组
+
+# 氢键分析相关
+# HBOND_Ref_GROUP="MainChain+H"   # 氢键供体组
+# HBOND_Target_GROUP="MainChain+H" # 氢键受体组
+
+# DSSP分析相关（二级结构）
+DSSP_cal_GROUP="Protein"   # DSSP计算组：用于计算二级结构的原子组
+
+
+# ======================================
+# 9. 索引组参考（GROMACS默认索引组）
+# ======================================
+# Group     0 (         System) - 整个模拟体系
+# Group     1 (        Protein) - 蛋白质原子
+# Group     2 (      Protein-H) - 蛋白质中的氢原子
+# Group     3 (        C-alpha) - 碳原子α
+# Group     4 (       Backbone) - 主链原子
+# Group     5 (      MainChain) - 主链（N, C, Cα, O）
+# Group     6 (   MainChain+Cb) - 主链+β碳
+# Group     7 (    MainChain+H) - 主链+氢
+# Group     8 (      SideChain) - 侧链原子
+# Group     9 (    SideChain-H) - 侧链氢原子
+# Group    10 (    Prot-Masses) - 蛋白质质量中心
+# Group    11 (    non-Protein) - 非蛋白质原子
+# Group    12 (          Water) - 水分子
+# Group    13 (            SOL) - 溶剂（水+离子）
+# Group    14 (      non-Water) - 非水分子
+# Group    15 (            Ion) - 离子
+# Group    16 ( Water_and_ions) - 水和离子
+
+
+# ======================================
+# 10. 示例配置参考
+# ======================================
+# 快速测试配置（短时间模拟）
+# 将md.mdp中的nsteps改为10000
+
+# 高分辨率模拟配置
+# 将md.mdp中的dt改为0.001，nsteps相应调整
+# 增加PME精度：fourierspacing=0.12
+
+# 膜蛋白模拟配置
+# 使用合适的膜力场，如charmm36-membrane
+# 设置合适的盒子类型和大小
+
+
+# ======================================
+# 11. 注意事项
+# ======================================
+# 1. 确保PDB文件格式正确，无缺失原子
+# 2. 选择与研究目的匹配的力场和水模型
+# 3. 盒子大小应足够大，避免周期性效应
+# 4. 离子浓度应根据实际研究体系调整
+# 5. 长时间模拟建议启用检查点功能
+# 6. 轨迹校正参数应根据体系特性选择
+# 7. 分析参数应根据研究目的灵活调整

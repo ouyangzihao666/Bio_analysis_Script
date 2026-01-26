@@ -1,15 +1,47 @@
-; ions.mdp - used as input into grompp to generate ions.tpr
-; Parameters describing what to do, when to stop and what to save
-integrator  = steep         ; Algorithm (steep = steepest descent minimization)
-emtol       = 1000.0        ; Stop minimization when the maximum force < 1000.0 kJ/mol/nm
-emstep      = 0.01          ; Minimization step size
-nsteps      = 50000         ; Maximum number of (minimization) steps to perform
+; ions.mdp - GROMACS离子添加参数文件
+; 用途: 用于grompp生成ions.tpr，添加离子中和体系电荷
+; 版本: 1.0.0
 
-; Parameters describing how to find the neighbors of each atom and how to calculate the interactions
-nstlist         = 1         ; Frequency to update the neighbor list and long range forces
-cutoff-scheme	= Verlet    ; Buffered neighbor searching 
-ns_type         = grid      ; Method to determine neighbor list (simple, grid)
-coulombtype     = cutoff    ; Treatment of long range electrostatic interactions
-rcoulomb        = 1.0       ; Short-range electrostatic cut-off
-rvdw            = 1.0       ; Short-range Van der Waals cut-off
-pbc             = xyz       ; Periodic Boundary Conditions in all 3 dimensions
+; ======================================
+; 1. 能量最小化核心参数
+; ======================================
+
+; 积分器类型：用于离子添加前的快速能量最小化
+; steep = 最陡下降法，适用于初始结构优化
+integrator  = steep         ; 积分器算法：最陡下降法
+
+; 能量最小化收敛阈值：当最大力小于此值时停止
+; 对于离子添加步骤，使用较大值以加快计算
+emtol       = 1000.0        ; 收敛阈值：最大力 < 1000.0 kJ/mol/nm
+
+; 最小化步长：控制每次迭代的步长大小
+emstep      = 0.01          ; 最小化步长：0.01 nm
+
+; 最大最小化步数：防止无限循环
+nsteps      = 50000         ; 最大最小化步数：50000步
+
+; ======================================
+; 2. 非键相互作用参数
+; ======================================
+
+; 邻居列表更新频率：每多少步更新一次邻居列表
+nstlist         = 1         ; 邻居列表更新频率：每1步更新一次
+
+; 截断方案：控制邻居列表和截断半径的处理方式
+cutoff-scheme   = Verlet    ; 截断方案：Verlet缓冲邻居搜索（推荐）
+
+; 邻居搜索方法：决定如何查找原子的邻居
+ns_type         = grid      ; 邻居搜索方法：网格搜索（高效）
+
+; 静电相互作用处理方式：如何计算长程静电相互作用
+; 对于离子添加，使用简单截断以加快计算
+coulombtype     = cutoff    ; 静电相互作用：简单截断（快速）
+
+; 静电相互作用截断半径：直接空间静电相互作用的截断距离
+rcoulomb        = 1.0       ; 静电截断半径：1.0 nm
+
+; 范德华相互作用截断半径：直接空间范德华相互作用的截断距离
+rvdw            = 1.0       ; 范德华截断半径：1.0 nm
+
+; 周期性边界条件：在哪些方向应用周期性边界条件
+pbc             = xyz       ; 周期性边界条件：在x、y、z三个方向都应用

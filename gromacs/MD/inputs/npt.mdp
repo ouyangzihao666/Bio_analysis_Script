@@ -1,44 +1,181 @@
-title                   = OPLS Lysozyme NPT equilibration 
-define                  = -DPOSRES  ; position restrain the protein
-; Run parameters
-integrator              = md        ; leap-frog integrator
-nsteps                  = 50000     ; 2 * 50000 = 100 ps
-dt                      = 0.002     ; 2 fs
-; Output control
-nstxout                 = 500       ; save coordinates every 1.0 ps
-nstvout                 = 500       ; save velocities every 1.0 ps
-nstenergy               = 500       ; save energies every 1.0 ps
-nstlog                  = 500       ; update log file every 1.0 ps
-; Bond parameters
-continuation            = yes       ; Restarting after NVT       ;从NVT截断继续平衡
-constraint_algorithm    = lincs     ; holonomic constraints 
-constraints             = h-bonds   ; bonds involving H are constrained
-lincs_iter              = 1         ; accuracy of LINCS
-lincs_order             = 4         ; also related to accuracy
-; Nonbonded settings 
-cutoff-scheme           = Verlet    ; Buffered neighbor searching
-ns_type                 = grid      ; search neighboring grid cells
-nstlist                 = 10        ; 20 fs, largely irrelevant with Verlet scheme
-rcoulomb                = 1.0       ; short-range electrostatic cutoff (in nm)
-rvdw                    = 1.0       ; short-range van der Waals cutoff (in nm)
-DispCorr                = EnerPres  ; account for cut-off vdW scheme
-; Electrostatics
-coulombtype             = PME       ; Particle Mesh Ewald for long-range electrostatics
-pme_order               = 4         ; cubic interpolation
-fourierspacing          = 0.16      ; grid spacing for FFT
-; Temperature coupling is on
-tcoupl                  = V-rescale             ; modified Berendsen thermostat
-tc-grps                 = Protein Non-Protein   ; two coupling groups - more accurate
-tau_t                   = 0.1     0.1           ; time constant, in ps
-ref_t                   = 300     300           ; reference temperature, one for each group, in K
-; Pressure coupling is on       ;压力控制
-pcoupl                  = Parrinello-Rahman     ; Pressure coupling on in NPT       ;压力控制参数
-pcoupltype              = isotropic             ; uniform scaling of box vectors       ;各向同性压力
-tau_p                   = 2.0                   ; time constant, in ps       ;压力耦合时间常数
-ref_p                   = 1.0                   ; reference pressure, in bar       ;参考压力
-compressibility         = 4.5e-5                ; isothermal compressibility of water, bar^-1       ;压缩率，水通常为4.5e-5
-refcoord_scaling        = com
-; Periodic boundary conditions
-pbc                     = xyz       ; 3-D PBC
-; Velocity generation
-gen_vel                 = no        ; Velocity generation is off       ;从轨迹中读取速度
+; npt.mdp - GROMACS NPT平衡模拟参数文件
+; 用途: 用于grompp生成npt.tpr，在恒定温度和压力下进行平衡模拟
+# 作者：欧阳梓豪 & TraeCN
+; 版本: 1.0.0
+
+; ======================================
+; 1. 基本设置
+; ======================================
+
+; 模拟标题：用于标识模拟任务
+; 建议包含体系名称和模拟类型
+; title                   = OPLS Lysozyme NPT equilibration
+
+; 预处理定义：用于编译时的条件编译
+; -DPOSRES = 启用位置限制，防止蛋白质在平衡初期过度运动
+define                  = -DPOSRES  ; 启用蛋白质位置限制
+
+; ======================================
+; 2. 运行参数
+; ======================================
+
+; 积分器类型：控制分子动力学的积分算法
+; md = leap-frog积分器，适合标准分子动力学模拟
+integrator              = md        ; 积分器：leap-frog（标准MD）
+
+; 模拟总步数：控制模拟的总时长
+; 计算公式：总时长 = nsteps * dt
+; 初始设置：50000 * 0.002 ns = 100 ps
+nsteps                  = 50000     ; 总步数：50000步
+
+; 时间步长：控制每次积分的时间增量
+; 常用值：0.002 ns（2 fs），适合大多数生物分子模拟
+dt                      = 0.002     ; 时间步长：2 fs
+
+; ======================================
+; 3. 输出控制
+; ======================================
+
+; 坐标输出频率：每多少步保存一次坐标
+; 初始设置：每500步（1.0 ps）保存一次
+nstxout                 = 500       ; 坐标输出频率：每500步（1.0 ps）
+
+; 速度输出频率：每多少步保存一次速度
+nstvout                 = 500       ; 速度输出频率：每500步（1.0 ps）
+
+; 能量输出频率：每多少步保存一次能量数据
+nstenergy               = 500       ; 能量输出频率：每500步（1.0 ps）
+
+; 日志输出频率：每多少步更新一次日志文件
+nstlog                  = 500       ; 日志输出频率：每500步（1.0 ps）
+
+; ======================================
+; 4. 键约束参数
+; ======================================
+
+; 模拟连续性：是否为续跑模拟
+; yes = 从NVT截断继续平衡，no = 首次运行
+continuation            = yes       ; 模拟连续性：是（从NVT继续）
+
+; 约束算法：控制如何处理约束
+; lincs = LINCS算法，适合大多数情况
+constraint_algorithm    = lincs     ; 约束算法：LINCS（高效稳定）
+
+; 约束类型：指定哪些键需要被约束
+; h-bonds = 仅约束涉及氢原子的键，保持键长固定
+constraints             = h-bonds   ; 约束：仅约束氢键
+
+; LINCS算法迭代次数：控制约束的精度
+lincs_iter              = 1         ; LINCS迭代次数：1（平衡精度）
+
+; LINCS算法阶数：也与约束精度相关
+lincs_order             = 4         ; LINCS阶数：4（平衡精度）
+
+; ======================================
+; 5. 非键相互作用参数
+; ======================================
+
+; 截断方案：控制邻居列表和截断半径的处理方式
+cutoff-scheme           = Verlet    ; 截断方案：Verlet缓冲邻居搜索（推荐）
+
+; 邻居搜索方法：决定如何查找原子的邻居
+ns_type                 = grid      ; 邻居搜索方法：网格搜索（高效）
+
+; 邻居列表更新频率：每多少步更新一次邻居列表
+; 使用Verlet方案时，此参数影响较小
+nstlist                 = 10        ; 邻居列表更新频率：每10步（20 fs）
+
+; 静电相互作用截断半径：直接空间静电相互作用的截断距离
+rcoulomb                = 1.0       ; 静电截断半径：1.0 nm
+
+; 范德华相互作用截断半径：直接空间范德华相互作用的截断距离
+rvdw                    = 1.0       ; 范德华截断半径：1.0 nm
+
+; 色散校正：是否对范德华相互作用进行截断校正
+; EnerPres = 校正能量和压力（推荐）
+DispCorr                = EnerPres  ; 色散校正：能量和压力校正
+
+; ======================================
+; 6. 静电相互作用参数
+; ======================================
+
+; 静电相互作用处理方式：如何计算长程静电相互作用
+; PME = Particle Mesh Ewald，精确处理长程静电相互作用
+coulombtype             = PME       ; 静电相互作用：PME方法（精确）
+
+; PME插值阶数：控制PME计算的精度
+pme_order               = 4         ; PME插值阶数：4（立方插值）
+
+; PME网格间距：控制FFT网格的密度
+; 较小的值提高精度但增加计算成本
+; 推荐值：0.12-0.16 nm
+fourierspacing          = 0.16      ; PME网格间距：0.16 nm
+
+; ======================================
+; 7. 温度耦合设置
+; ======================================
+
+; 温度耦合类型：控制如何维持体系温度
+; V-rescale = Bussi等人的随机速度尺度恒温器，比Berendsen更准确
+tcoupl                  = V-rescale             ; 温度耦合：V-rescale恒温器（推荐）
+
+; 温度耦合组：指定哪些原子组使用不同的温度耦合
+tc-grps                 = Protein Non-Protein   ; 耦合组：蛋白质和非蛋白质
+
+; 温度耦合时间常数：控制温度调整的快慢
+tau_t                   = 0.1     0.1           ; 时间常数：0.1 ps（两组）
+
+; 参考温度：指定每个耦合组的目标温度
+; 常用数值：
+;   273 = 0 摄氏度
+;   277 = 4 摄氏度
+;   298 = 25 摄氏度
+ref_t                   = 298     298           ; 参考温度：298 K（两组）
+
+; ======================================
+; 8. 压力耦合设置
+; ======================================
+
+; 压力耦合类型：控制如何维持体系压力
+; Parrinello-Rahman = 允许盒子各向异性变化，适合大多数情况
+; 其他选项：berendsen, isotropic等
+pcoupl                  = Parrinello-Rahman     ; 压力耦合：Parrinello-Rahman（推荐）
+
+; 压力耦合类型：控制盒子的缩放方式
+; isotropic = 各向同性缩放（盒子保持相似形状）
+; semiisotropic = 半各向异性缩放（z方向独立）
+; anisotropic = 完全各向异性缩放
+pcoupltype              = isotropic             ; 压力耦合类型：各向同性
+
+; 压力耦合时间常数：控制压力调整的快慢
+; 常用值：1.0-5.0 ps，较小的值压力控制更严格
+tau_p                   = 2.0                   ; 时间常数：2.0 ps
+
+; 参考压力：指定体系的目标压力
+; 常用值：1.0 bar（大气压）
+ref_p                   = 1.0                   ; 参考压力：1.0 bar
+
+; 压缩率：指定体系的等温压缩率
+; 对于水，常用值：4.5e-5 bar^-1
+compressibility         = 4.5e-5                ; 压缩率：4.5e-5 bar^-1
+
+; 参考坐标缩放：控制如何处理参考坐标的缩放
+refcoord_scaling        = com                   ; 参考坐标缩放：质心缩放
+
+; ======================================
+; 9. 周期性边界条件
+; ======================================
+
+; 周期性边界条件：在哪些方向应用周期性边界条件
+pbc                     = xyz       ; 周期性边界条件：x、y、z三个方向
+
+; ======================================
+; 10. 速度生成
+; ======================================
+
+; 初始速度生成：是否从麦克斯韦-玻尔兹曼分布生成初始速度
+; no = 不生成，使用输入结构的速度或从检查点文件读取
+gen_vel                 = no        ; 生成初始速度：否（从NVT继续）
+
+; 随机种子：用于生成初始速度的随机数种子（仅当gen_vel=yes时有效）
+gen_seed                = -1        ; 随机种子：自动生成

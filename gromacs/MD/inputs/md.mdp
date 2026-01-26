@@ -1,46 +1,218 @@
-title                   = OPLS Lysozyme NPT equilibration 
-; Run parameters
-integrator              = md        ; leap-frog integrator
-nsteps                  = 500000    ; 2 * 500000 = 1000 ps (1 ns)
-dt                      = 0.002     ; 2 fs
-; Output control
-nstxout                 = 0         ; suppress bulky .trr file by specifying 
-nstvout                 = 0         ; 0 for output frequency of nstxout,
-nstfout                 = 0         ; nstvout, and nstfout
-nstenergy               = 5000      ; save energies every 10.0 ps
-nstlog                  = 5000      ; update log file every 10.0 ps
-nstxout-compressed      = 5000      ; save compressed coordinates every 10.0 ps
-compressed-x-grps       = System    ; save the whole system
-; Bond parameters
-continuation            = yes       ; Restarting after NPT 
-constraint_algorithm    = lincs     ; holonomic constraints 
-constraints             = h-bonds   ; bonds involving H are constrained
-lincs_iter              = 1         ; accuracy of LINCS
-lincs_order             = 4         ; also related to accuracy
-; Neighborsearching
-cutoff-scheme           = Verlet    ; Buffered neighbor searching
-ns_type                 = grid      ; search neighboring grid cells
-nstlist                 = 10        ; 20 fs, largely irrelevant with Verlet scheme
-rcoulomb                = 1.0       ; short-range electrostatic cutoff (in nm)
-rvdw                    = 1.0       ; short-range van der Waals cutoff (in nm)
-; Electrostatics
-coulombtype             = PME       ; Particle Mesh Ewald for long-range electrostatics
-pme_order               = 4         ; cubic interpolation
-fourierspacing          = 0.16      ; grid spacing for FFT
-; Temperature coupling is on
-tcoupl                  = V-rescale             ; modified Berendsen thermostat
-tc-grps                 = Protein Non-Protein   ; two coupling groups - more accurate
-tau_t                   = 0.1     0.1           ; time constant, in ps
-ref_t                   = 300     300           ; reference temperature, one for each group, in K
-; Pressure coupling is on
-pcoupl                  = Parrinello-Rahman     ; Pressure coupling on in NPT
-pcoupltype              = isotropic             ; uniform scaling of box vectors
-tau_p                   = 2.0                   ; time constant, in ps
-ref_p                   = 1.0                   ; reference pressure, in bar
-compressibility         = 4.5e-5                ; isothermal compressibility of water, bar^-1
-; Periodic boundary conditions
-pbc                     = xyz       ; 3-D PBC
-; Dispersion correction
-DispCorr                = EnerPres  ; account for cut-off vdW scheme
-; Velocity generation
-gen_vel                 = no        ; Velocity generation is off 
+; md.mdp - GROMACS生产模拟参数文件
+; 用途: 用于grompp生成md.tpr，进行长时间的生产分子动力学模拟
+# 作者：欧阳梓豪 & TraeCN
+; 版本: 1.0.0
+
+; ======================================
+; 1. 基本设置
+; ======================================
+
+; 模拟标题：用于标识模拟任务
+; 建议包含体系名称和模拟类型
+; title                   = OPLS Lysozyme NPT equilibration
+
+; ======================================
+; 2. 运行参数
+; ======================================
+
+; 积分器类型：控制分子动力学的积分算法
+; md = leap-frog积分器，适合标准分子动力学模拟
+integrator              = md        ; 积分器：leap-frog（标准MD）
+
+; 模拟总步数：控制模拟的总时长
+; 计算公式：总时长 = nsteps * dt
+; 初始设置：500000 * 0.002 ns = 1000 ps = 1 ns
+nsteps                  = 500000    ; 总步数：500000步
+
+; 时间步长：控制每次积分的时间增量
+; 常用值：0.002 ns（2 fs），适合大多数生物分子模拟
+dt                      = 0.002     ; 时间步长：2 fs
+
+; ======================================
+; 3. 输出控制
+; ======================================
+
+; 坐标输出频率：每多少步保存一次非压缩坐标（.trr文件）
+; 0 = 不保存，节省磁盘空间
+nstxout                 = 0         ; 非压缩坐标输出：关闭
+
+; 速度输出频率：每多少步保存一次速度
+; 0 = 不保存，节省磁盘空间
+nstvout                 = 0         ; 速度输出：关闭
+
+; 力输出频率：每多少步保存一次力
+; 0 = 不保存，节省磁盘空间
+nstfout                 = 0         ; 力输出：关闭
+
+; 能量输出频率：每多少步保存一次能量数据
+; 初始设置：每5000步（10.0 ps）保存一次
+nstenergy               = 5000      ; 能量输出频率：每5000步（10.0 ps）
+
+; 日志输出频率：每多少步更新一次日志文件
+; 初始设置：每5000步（10.0 ps）更新一次
+nstlog                  = 5000      ; 日志输出频率：每5000步（10.0 ps）
+
+; 压缩坐标输出频率：每多少步保存一次压缩坐标（.xtc文件）
+; 初始设置：每5000步（10.0 ps）保存一次
+nstxout-compressed      = 5000      ; 压缩坐标输出：每5000步（10.0 ps）
+
+; 压缩坐标组：指定哪些原子组保存到压缩坐标文件中
+; System = 保存整个体系
+compressed-x-grps       = System    ; 压缩坐标组：整个体系
+
+; ======================================
+; 4. 键约束参数
+; ======================================
+
+; 模拟连续性：是否为续跑模拟
+; yes = 从NPT截断继续，no = 首次运行
+continuation            = yes       ; 模拟连续性：是（从NPT继续）
+
+; 约束算法：控制如何处理约束
+; lincs = LINCS算法，适合大多数情况
+constraint_algorithm    = lincs     ; 约束算法：LINCS（高效稳定）
+
+; 约束类型：指定哪些键需要被约束
+; h-bonds = 仅约束涉及氢原子的键，保持键长固定
+constraints             = h-bonds   ; 约束：仅约束氢键
+
+; LINCS算法迭代次数：控制约束的精度
+lincs_iter              = 1         ; LINCS迭代次数：1（平衡精度）
+
+; LINCS算法阶数：也与约束精度相关
+lincs_order             = 4         ; LINCS阶数：4（平衡精度）
+
+; ======================================
+; 5. 非键相互作用参数
+; ======================================
+
+; 截断方案：控制邻居列表和截断半径的处理方式
+cutoff-scheme           = Verlet    ; 截断方案：Verlet缓冲邻居搜索（推荐）
+
+; 邻居搜索方法：决定如何查找原子的邻居
+ns_type                 = grid      ; 邻居搜索方法：网格搜索（高效）
+
+; 邻居列表更新频率：每多少步更新一次邻居列表
+; 使用Verlet方案时，此参数影响较小
+nstlist                 = 10        ; 邻居列表更新频率：每10步（20 fs）
+
+; 静电相互作用截断半径：直接空间静电相互作用的截断距离
+rcoulomb                = 1.0       ; 静电截断半径：1.0 nm
+
+; 范德华相互作用截断半径：直接空间范德华相互作用的截断距离
+rvdw                    = 1.0       ; 范德华截断半径：1.0 nm
+
+; 色散校正：是否对范德华相互作用进行截断校正
+; EnerPres = 校正能量和压力（推荐）
+DispCorr                = EnerPres  ; 色散校正：能量和压力校正
+
+; ======================================
+; 6. 静电相互作用参数
+; ======================================
+
+; 静电相互作用处理方式：如何计算长程静电相互作用
+; PME = Particle Mesh Ewald，精确处理长程静电相互作用
+coulombtype             = PME       ; 静电相互作用：PME方法（精确）
+
+; PME插值阶数：控制PME计算的精度
+pme_order               = 4         ; PME插值阶数：4（立方插值）
+
+; PME网格间距：控制FFT网格的密度
+; 较小的值提高精度但增加计算成本
+; 推荐值：0.12-0.16 nm
+fourierspacing          = 0.16      ; PME网格间距：0.16 nm
+
+; ======================================
+; 7. 温度耦合设置
+; ======================================
+
+; 温度耦合类型：控制如何维持体系温度
+; V-rescale = Bussi等人的随机速度尺度恒温器，比Berendsen更准确
+tcoupl                  = V-rescale             ; 温度耦合：V-rescale恒温器（推荐）
+
+; 温度耦合组：指定哪些原子组使用不同的温度耦合
+tc-grps                 = Protein Non-Protein   ; 耦合组：蛋白质和非蛋白质
+
+; 温度耦合时间常数：控制温度调整的快慢
+tau_t                   = 0.1     0.1           ; 时间常数：0.1 ps（两组）
+
+; 参考温度：指定每个耦合组的目标温度
+; 常用数值：
+;   273 = 0 摄氏度
+;   277 = 4 摄氏度
+;   298 = 25 摄氏度
+ref_t                   = 298     298           ; 298 K（两组）
+
+; ======================================
+; 8. 压力耦合设置
+; ======================================
+
+; 压力耦合类型：控制如何维持体系压力
+; Parrinello-Rahman = 允许盒子各向异性变化，适合大多数情况
+pcoupl                  = Parrinello-Rahman     ; 压力耦合：Parrinello-Rahman（推荐）
+
+; 压力耦合类型：控制盒子的缩放方式
+; isotropic = 各向同性缩放（盒子保持相似形状）
+pcoupltype              = isotropic             ; 压力耦合类型：各向同性
+
+; 压力耦合时间常数：控制压力调整的快慢
+tau_p                   = 2.0                   ; 时间常数：2.0 ps
+
+; 参考压力：指定体系的目标压力
+ref_p                   = 1.0                   ; 参考压力：1.0 bar
+
+; 压缩率：指定体系的等温压缩率
+; 对于水，常用值：4.5e-5 bar^-1
+compressibility         = 4.5e-5                ; 压缩率：4.5e-5 bar^-1
+
+; ======================================
+; 9. 周期性边界条件
+; ======================================
+
+; 周期性边界条件：在哪些方向应用周期性边界条件
+pbc                     = xyz       ; 周期性边界条件：x、y、z三个方向
+
+; ======================================
+; 10. 速度生成
+; ======================================
+
+; 初始速度生成：是否从麦克斯韦-玻尔兹曼分布生成初始速度
+; no = 不生成，使用输入结构的速度或从检查点文件读取
+gen_vel                 = no        ; 生成初始速度：否（从NPT继续）
+
+; ======================================
+; 11. 检查点设置
+; ======================================
+
+; 检查点输出频率：每多少步保存一次检查点文件
+; 检查点文件用于模拟中断后重启
+; 常用值：1000-5000步，平衡效率和恢复能力
+nstcheckpoint           = 5000      ; 检查点输出频率：每5000步（10.0 ps）
+
+; 检查点压缩：是否压缩检查点文件
+; yes = 压缩，节省磁盘空间
+; no = 不压缩，更快的读写速度
+checkpoint-compress     = yes       ; 检查点压缩：启用
+
+; ======================================
+; 12. 性能优化设置
+; ======================================
+
+; 线程设置：控制GROMACS使用的线程数量
+; 通常由命令行参数 -nt 控制，此处可设置默认值
+; ntmpi = 线程MPI进程数（多节点时使用）
+; ntomp = 每个MPI进程的OpenMP线程数
+; 示例：ntmpi = 1 ; ntomp = 8
+
+; GPU加速：控制是否使用GPU加速
+; 通常由命令行参数 -gpu_id 控制
+; 示例：gpu_id = 0,1
+
+; ======================================
+; 13. 注意事项
+; ======================================
+; 1. 生产模拟通常需要更长的时间，建议设置足够的nsteps
+; 2. 输出频率应根据模拟时长调整，避免输出文件过大
+; 3. 检查点设置应合理，以便在模拟中断时能够恢复
+; 4. 可根据硬件条件调整线程和GPU设置以提高性能
+; 5. 建议定期监控模拟的能量和温度稳定性
