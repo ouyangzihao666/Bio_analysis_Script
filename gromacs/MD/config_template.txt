@@ -29,6 +29,9 @@ WORK_DIR="/mnt/d/BioAnalysisFiles/gromacs_files/MD/test1"
 # md.mdp 是分子动力学模拟阶段的配置文件
 MDP_DIR="mdp"
 
+# 蛋白质在模拟时的质子化情况
+# 根据需要设置pH值
+# PH_VALUE=8.0
 
 # ======================================
 # 2. 力场和水模型配置

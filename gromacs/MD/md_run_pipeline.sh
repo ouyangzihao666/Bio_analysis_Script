@@ -1,12 +1,36 @@
 #!/bin/bash
 
 # GROMACS分子动力学模拟批处理脚本
-# 作者：欧阳梓豪 & TraeCN
+# 作者：欧阳梓豪 & TraeCN & 豆包
 # 版本: 1.0.0
 # 使用方法: ./run_md_pipeline.sh <config_file>
 
 # 错误处理设置
+#!/bin/bash
+
+# ====================== 自动错误捕获功能（新增）======================
+# 启用严格模式 + 错误追踪
 set -euo pipefail
+set -o errtrace  # 让陷阱在函数内也生效
+set -o functrace # 追踪函数错误
+
+# 错误处理函数：出错自动打印行号、命令、位置
+error_handler() {
+    local ERR_CODE=$?
+    local ERR_LINE=$1
+    local ERR_CMD=$2
+    echo -e "\n==================== 脚本运行失败 ===================="
+    echo -e "❌ 错误位置：脚本第 ${ERR_LINE} 行"
+    echo -e "❌ 出错命令：${ERR_CMD}"
+    echo -e "❌ 错误码：${ERR_CODE}"
+    echo -e "📂 当前目录：$(pwd)"
+    echo -e "=====================================================\n"
+    exit $ERR_CODE
+}
+
+# 绑定错误捕获（自动触发）
+trap 'error_handler $LINENO "$BASH_COMMAND"' ERR
+# =================================================================
 
 # ========== 功能函数定义 ==========
 
@@ -45,12 +69,15 @@ show_help() {
 
 # 检查GROMACS环境
 check_gromacs_env() {
+    # 检查gmx命令是否存在
     if ! command -v gmx &> /dev/null; then
-        echo "错误: GROMACS未安装或未添加到PATH中"
+        echo "错误：未找到gmx命令，请先加载GROMACS环境！"
         exit 1
     fi
-    GMX_VERSION=$(gmx --version 2>&1 | grep -oP 'Version \K[0-9]+\.[0-9]+')
-    echo "使用GROMACS版本: $GMX_VERSION"
+    
+    # 兼容Ubuntu的版本提取（修复核心bug）
+    GMX_VERSION=$(gmx --version | grep -oE 'GROMACS version:     [0-9]+\.[0-9]+' | awk '{print $4}')
+    echo "检测到GROMACS版本：$GMX_VERSION"
 }
 
 # 检查参数
@@ -111,6 +138,10 @@ SKIP_EXISTING="true"
 EM_VERBOSE="true"
 EQUIL_VERBOSE="true"
 SOLVENT_FILE="spc216.gro"
+#默认生理pH值 7.4
+PH_VALUE="7.4"
+#默认最大警告数 5（配置文件未设置/注释时自动使用）
+MAXWARN="5"
 
 # 轨迹校正相关参数的默认值
 PERFORM_TRAJ_CORRECTION="true"
@@ -237,11 +268,11 @@ IFS=',' read -ra PATHS <<< "$PROTEIN_LIST"
 valid_proteins=()
 
 for i in "${!PATHS[@]}"; do
-    local raw_path="${PATHS[$i]}"
-    local clean_path=$(echo "$raw_path" | xargs)  # 去除空格
+    raw_path="${PATHS[$i]}"
+    clean_path=$(echo "$raw_path" | xargs)  # 去除空格
     
     if [ -n "$clean_path" ]; then  # 跳过空路径
-        local resolved_path=$(resolve_path "$clean_path")
+        resolved_path=$(resolve_path "$clean_path")
         
         # 检查蛋白质文件是否存在
         if [ -f "$resolved_path" ]; then
@@ -356,7 +387,7 @@ for protein in "${PROTEINS[@]}"; do
     PROCESSED_GRO="${protein_name}_processed.gro"
     TOPOL_FILE="${protein_name}_topol.top"
     if ! check_and_skip "$PROCESSED_GRO" "pdb2gmx转换"; then
-        run_gmx "gmx pdb2gmx -f '$CLEAN_PDB' -o '$PROCESSED_GRO' -p '$TOPOL_FILE' -water '$WATER_MODEL' -ff '$FORCE_FIELD' -ignh" \
+        run_gmx "gmx pdb2gmx -f '$CLEAN_PDB' -o '$PROCESSED_GRO' -p '$TOPOL_FILE' -water '$WATER_MODEL' -ff '$FORCE_FIELD' -phys '$PH_VALUE' -ignh" \
                 "$PROCESSED_GRO" "pdb2gmx转换"
     fi
     
@@ -392,7 +423,7 @@ for protein in "${PROTEINS[@]}"; do
     
     # 4.1 准备离子添加
     if ! check_and_skip "$IONS_TPR" "离子预处理"; then
-        run_gmx "gmx grompp -f '${MDP_DIR}/ions.mdp' -c '../03_solvation/$SOLV_GRO' -p '../01_preparation/$TOPOL_FILE' -o '$IONS_TPR'" \
+        run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/ions.mdp' -c '../03_solvation/$SOLV_GRO' -p '../01_preparation/$TOPOL_FILE' -o '$IONS_TPR'" \
                 "$IONS_TPR" "grompp离子准备"
     fi
     
@@ -414,7 +445,7 @@ for protein in "${PROTEINS[@]}"; do
     
     # 5.1 准备能量最小化
     if ! check_and_skip "$EM_TPR" "能量最小化准备"; then
-        run_gmx "gmx grompp -f '${MDP_DIR}/minim.mdp' -c '../04_ions/$SOLV_IONS_GRO' -p '../01_preparation/$TOPOL_FILE' -o '$EM_TPR'" \
+        run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/minim.mdp' -c '../04_ions/$SOLV_IONS_GRO' -p '../01_preparation/$TOPOL_FILE' -o '$EM_TPR'" \
                 "$EM_TPR" "grompp能量最小化"
     fi
     
@@ -437,7 +468,7 @@ for protein in "${PROTEINS[@]}"; do
     NVT_CPT="${protein_name}_nvt.cpt"
     
     if ! check_and_skip "$NVT_GRO" "NVT平衡"; then
-        run_gmx "gmx grompp -f '${MDP_DIR}/nvt.mdp' -c '../05_energy_minimization/$EM_GRO' -r '../05_energy_minimization/$EM_GRO' -p '../01_preparation/$TOPOL_FILE' -o '$NVT_TPR'" \
+        run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/nvt.mdp' -c '../05_energy_minimization/$EM_GRO' -r '../05_energy_minimization/$EM_GRO' -p '../01_preparation/$TOPOL_FILE' -o '$NVT_TPR'" \
                 "$NVT_TPR" "grompp NVT准备"
         
         NVT_CMD="gmx mdrun -deffnm '${protein_name}_nvt' -s '$NVT_TPR'"
@@ -457,7 +488,7 @@ for protein in "${PROTEINS[@]}"; do
     NPT_CPT="${protein_name}_npt.cpt"
     
     if ! check_and_skip "$NPT_GRO" "NPT平衡"; then
-        run_gmx "gmx grompp -f '${MDP_DIR}/npt.mdp' -c '../06_nvt_equilibration/$NVT_GRO' -r '../06_nvt_equilibration/$NVT_GRO' -t '../06_nvt_equilibration/$NVT_CPT' -p '../01_preparation/$TOPOL_FILE' -o '$NPT_TPR'" \
+        run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/npt.mdp' -c '../06_nvt_equilibration/$NVT_GRO' -r '../06_nvt_equilibration/$NVT_GRO' -t '../06_nvt_equilibration/$NVT_CPT' -p '../01_preparation/$TOPOL_FILE' -o '$NPT_TPR'" \
                 "$NPT_TPR" "grompp NPT准备"
         
         NPT_CMD="gmx mdrun -deffnm '${protein_name}_npt' -s '$NPT_TPR'"
@@ -477,7 +508,7 @@ for protein in "${PROTEINS[@]}"; do
     MD_XTC="${protein_name}_md.xtc"
     
     if ! check_and_skip "$MD_GRO" "MD模拟"; then
-        run_gmx "gmx grompp -f '${MDP_DIR}/md.mdp' -c '../07_npt_equilibration/$NPT_GRO' -t '../07_npt_equilibration/$NPT_CPT' -p '../01_preparation/$TOPOL_FILE' -o '$MD_TPR'" \
+        run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/md.mdp' -c '../07_npt_equilibration/$NPT_GRO' -t '../07_npt_equilibration/$NPT_CPT' -p '../01_preparation/$TOPOL_FILE' -o '$MD_TPR'" \
                 "$MD_TPR" "grompp MD准备"
         
         MD_RUN_CMD="gmx mdrun -deffnm '${protein_name}_md' -s '$MD_TPR'"
