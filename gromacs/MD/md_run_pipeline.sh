@@ -373,23 +373,47 @@ for protein in "${PROTEINS[@]}"; do
     mkdir -p "$STEP_DIR"
     cd "$STEP_DIR" || exit 1
     
-    log "INFO" "开始步骤1: 准备蛋白质结构"
-    
-    # 1.1 清理PDB文件（去除水）
+
+    log "INFO" "开始蛋白质结构预处理：${protein_name}"
+
+    # 1. 原始PDB文件
+    #RAW_PDB="${PROTEIN_DIR}/${protein_name}.pdb"
+    # 2. PropKa处理后的PDB（按指定pH质子化）
+    TEMP_PQR="${protein_name}_temp.pqr"
+    PROPKA_PDB="${protein_name}_propka.pdb"
+    # 3. 去水后的干净PDB
     CLEAN_PDB="${protein_name}_clean.pdb"
-    if ! check_and_skip "$CLEAN_PDB" "PDB清理"; then
-        log "INFO" "执行PDB清理 - 去除水分子"
-        grep -v HOH "$protein" > "$CLEAN_PDB"
-        log "INFO" "PDB清理完成，输出文件: $CLEAN_PDB"
-    fi
-    
-    # 1.2 PDB转GRO格式
+    # 输出文件
     PROCESSED_GRO="${protein_name}_processed.gro"
     TOPOL_FILE="${protein_name}_topol.top"
+
+    #if ! check_and_skip "$PROPKA_PDB" "PDB2PQR pH=${PH_VALUE} 质子化处理"; then
+    if false then
+        log "INFO" "使用 PDB2PQR + PropKa 在 pH=${PH_VALUE} 下生成质子化结构"
+        run_gmx "pdb2pqr --ff AMBER --titration-state-method propka --with-ph ${PH_VALUE} --pdb-output ${PROPKA_PDB} ${protein} ${TEMP_PQR}" \
+                "$PROPKA_PDB" "质子化处理"
+    else
+        log "WARNING" "未实装其他质子化处理方法，不调整质子化状态，直接进行下一步"
+        PROPKA_PDB=$protein
+    fi
+
+    # 1.2 自动去除水分子（HOH）
+    if ! check_and_skip "$CLEAN_PDB" "去除水分子"; then
+        run_gmx "grep -v HOH $PROPKA_PDB > $CLEAN_PDB" \
+                "$CLEAN_PDB" "去除水分子"
+    else
+        log "INFO" "跳过去除水分子步骤，直接进行下一步"
+        CLEAN_PDB=$PROPKA_PDB
+    fi
+
+    # 1.3 pdb2gmx 生成拓扑
     if ! check_and_skip "$PROCESSED_GRO" "pdb2gmx转换"; then
-        run_gmx "gmx pdb2gmx -f '$CLEAN_PDB' -o '$PROCESSED_GRO' -p '$TOPOL_FILE' -water '$WATER_MODEL' -ff '$FORCE_FIELD' -phys '$PH_VALUE' -ignh" \
+        run_gmx "gmx pdb2gmx -f \"$CLEAN_PDB\" -o \"$PROCESSED_GRO\" -p \"$TOPOL_FILE\" -water \"$WATER_MODEL\" -ff \"$FORCE_FIELD\" -ignh" \
                 "$PROCESSED_GRO" "pdb2gmx转换"
     fi
+
+
+
     
     # 步骤2: 定义模拟盒子
     STEP_DIR="../02_box"
