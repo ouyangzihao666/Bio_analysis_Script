@@ -388,7 +388,7 @@ for protein in "${PROTEINS[@]}"; do
     TOPOL_FILE="${protein_name}_topol.top"
 
     #if ! check_and_skip "$PROPKA_PDB" "PDB2PQR pH=${PH_VALUE} 质子化处理"; then
-    if false then
+    if false; then
         log "INFO" "使用 PDB2PQR + PropKa 在 pH=${PH_VALUE} 下生成质子化结构"
         run_gmx "pdb2pqr --ff AMBER --titration-state-method propka --with-ph ${PH_VALUE} --pdb-output ${PROPKA_PDB} ${protein} ${TEMP_PQR}" \
                 "$PROPKA_PDB" "质子化处理"
