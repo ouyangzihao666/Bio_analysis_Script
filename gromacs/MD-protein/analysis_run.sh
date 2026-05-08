@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# 作者：欧阳梓豪 & TraeCN & 豆包-专家模式
+# 版本: 1.0.1
+
 # GROMACS分析脚本
 # 使用方法: ./run_analysis.sh <config_file> <analysis_type> [protein_name]
 

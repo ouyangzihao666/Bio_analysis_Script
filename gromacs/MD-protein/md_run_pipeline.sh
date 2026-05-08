@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # GROMACS分子动力学模拟批处理脚本
-# 作者：欧阳梓豪 & TraeCN & 豆包
-# 版本: 1.0.0
+# 作者：欧阳梓豪 & TraeCN & 豆包-专家模式
+# 版本: 1.0.1
 # 使用方法: ./run_md_pipeline.sh <config_file>
 
 # 错误处理设置
