@@ -18,7 +18,7 @@ PROTEIN_LIST="1AKI.pdb,pro/1AKI-1.pdb"
 
 # 工作目录：所有模拟输出将在此目录下创建
 # 建议使用绝对路径，避免路径问题
-WORK_DIR="/mnt/d/BioAnalysisFiles/gromacs_files/MD/test1"
+WORK_DIR="/home/work"
 
 # MDP文件目录：包含模拟所需的所有.mdp文件
 # 需包含：ions.mdp, minim.mdp, nvt.mdp, npt.mdp, md.mdp
