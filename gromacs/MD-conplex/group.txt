@@ -1,0 +1,12 @@
+# 蛋白质-配体复合物配对列表
+# 版本 1.0.1
+# 作者：欧阳梓豪 & 豆包-专家模式
+
+# 蛋白质文件名,配体文件名,蛋白质简称,配体三字母代码
+# 可以使用相对路径，无需带有"./"前缀
+
+# 示例：
+# protein.pdb,ligand.sdf,PROT,LIG
+# input/protein.pdb,ligand.sdf,PROT,LIG
+# input/protein.pdb,input/ligand.sdf,PROT,LIG
+
