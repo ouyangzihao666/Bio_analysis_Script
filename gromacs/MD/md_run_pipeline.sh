@@ -75,7 +75,7 @@ check_gromacs_env() {
         exit 1
     fi
     
-    # 兼容Ubuntu的版本提取（修复核心bug）
+    # 兼容Ubuntu的版本提取
     GMX_VERSION=$(gmx --version | grep -oE 'GROMACS version:     [0-9]+\.[0-9]+' | awk '{print $4}')
     echo "检测到GROMACS版本：$GMX_VERSION"
 }
@@ -108,12 +108,7 @@ parse_arguments() {
         shift
     done
     
-    if [ -z "$CONFIG_FILE" ]; then
-        echo "错误: 必须指定配置文件"
-        show_help
-        exit 1
-    fi
-    
+        
     echo "使用配置文件: $CONFIG_FILE"
 }
 
@@ -125,13 +120,13 @@ check_gromacs_env
 # 解析命令行参数
 parse_arguments "$@"
 
-# 加载配置文件前的临时工作目录
-TEMP_WORK_DIR="$(pwd)"
-LOG_FILE="${TEMP_WORK_DIR}/md_pipeline_$(date +%Y%m%d_%H%M%S).log"
+# 获取当前用户路径
+USER_CWD="$PWD"
+#定义日志文件
+LOG_FILE="${USER_CWD}/md_pipeline_$(date +%Y%m%d_%H%M%S).log"
 touch "$LOG_FILE"
 
-log "INFO" "GROMACS MD Pipeline Script 开始执行"
-log "INFO" "使用配置文件: $CONFIG_FILE"
+echo "使用配置文件: $CONFIG_FILE"
 
 # ========== 首先设置所有默认值 ==========
 SKIP_EXISTING="true"
@@ -153,11 +148,10 @@ CORRECTED_TRAJ_SUFFIX="_md_corrected.xtc"
 # 加载配置文件
 log "INFO" "开始加载配置文件"
 if [ ! -f "$CONFIG_FILE" ]; then
-    log "ERROR" "配置文件 $CONFIG_FILE 不存在"
+    echo "错误：必须指定有效的配置文件"
     exit 1
 fi
 source "$CONFIG_FILE"
-log "INFO" "配置文件加载完成"
 
 # 重新初始化日志，使用配置文件中的工作目录
 setup_logging
@@ -476,9 +470,12 @@ for protein in "${PROTEINS[@]}"; do
     # 5.2 运行能量最小化
     if ! check_and_skip "$EM_GRO" "能量最小化运行"; then
         EM_CMD="gmx mdrun -deffnm '${protein_name}_em' -s '$EM_TPR'"
-        if [ "$EM_VERBOSE" = "true" ]; then
-            EM_CMD="$EM_CMD -v"
-        fi
+
+        [ "$EM_VERBOSE" = "true" ] && EM_CMD="$EM_CMD -v"
+        [ -n "${NUM_THREADS:-}" ] && EM_CMD="$EM_CMD -nt $NUM_THREADS"
+        [ -n "${GPU_ID:-}" ] && EM_CMD="$EM_CMD -gpu_id $GPU_ID"
+        [ -n "${EXTRA_ARGS:-}" ] && EM_CMD="$EM_CMD $EXTRA_ARGS"
+
         run_gmx "$EM_CMD" "$EM_GRO" "能量最小化"
     fi
     
@@ -496,9 +493,12 @@ for protein in "${PROTEINS[@]}"; do
                 "$NVT_TPR" "grompp NVT准备"
         
         NVT_CMD="gmx mdrun -deffnm '${protein_name}_nvt' -s '$NVT_TPR'"
-        if [ "$EQUIL_VERBOSE" = "true" ]; then
-            NVT_CMD="$NVT_CMD -v"
-        fi
+
+        [ "$EQUIL_VERBOSE" = "true" ] && NVT_CMD="$NVT_CMD -v"
+        [ -n "${NUM_THREADS:-}" ] && NVT_CMD="$NVT_CMD -nt $NUM_THREADS"
+        [ -n "${GPU_ID:-}" ] && NVT_CMD="$NVT_CMD -gpu_id $GPU_ID"
+        [ -n "${EXTRA_ARGS:-}" ] && NVT_CMD="$NVT_CMD $EXTRA_ARGS"
+
         run_gmx "$NVT_CMD" "$NVT_GRO" "NVT平衡"
     fi
     
@@ -516,9 +516,12 @@ for protein in "${PROTEINS[@]}"; do
                 "$NPT_TPR" "grompp NPT准备"
         
         NPT_CMD="gmx mdrun -deffnm '${protein_name}_npt' -s '$NPT_TPR'"
-        if [ "$EQUIL_VERBOSE" = "true" ]; then
-            NPT_CMD="$NPT_CMD -v"
-        fi
+        
+        [ "$EQUIL_VERBOSE" = "true" ] && NPT_CMD="$NPT_CMD -v"
+        [ -n "${NUM_THREADS:-}" ] && NPT_CMD="$NPT_CMD -nt $NUM_THREADS"
+        [ -n "${GPU_ID:-}" ] && NPT_CMD="$NPT_CMD -gpu_id $GPU_ID"
+        [ -n "${EXTRA_ARGS:-}" ] && NPT_CMD="$NPT_CMD $EXTRA_ARGS"
+
         run_gmx "$NPT_CMD" "$NPT_GRO" "NPT平衡"
     fi
     
@@ -535,15 +538,13 @@ for protein in "${PROTEINS[@]}"; do
         run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/md.mdp' -c '../07_npt_equilibration/$NPT_GRO' -t '../07_npt_equilibration/$NPT_CPT' -p '../01_preparation/$TOPOL_FILE' -o '$MD_TPR'" \
                 "$MD_TPR" "grompp MD准备"
         
-        MD_RUN_CMD="gmx mdrun -deffnm '${protein_name}_md' -s '$MD_TPR'"
-        if [ -n "${NUM_THREADS:-}" ]; then
-            MD_RUN_CMD="$MD_RUN_CMD -nt $NUM_THREADS"
-        fi
-        if [ -n "${GPU_ID:-}" ]; then
-            MD_RUN_CMD="$MD_RUN_CMD -gpu_id $GPU_ID"
-        fi
+        MD_CMD="gmx mdrun -deffnm '${protein_name}_md' -s '$MD_TPR'"
         
-        run_gmx "$MD_RUN_CMD" \
+        [ -n "${NUM_THREADS:-}" ] && MD_CMD="$MD_CMD -nt $NUM_THREADS"
+        [ -n "${GPU_ID:-}" ] && MD_CMD="$MD_CMD -gpu_id $GPU_ID"
+        [ -n "${EXTRA_ARGS:-}" ] && MD_CMD="$MD_CMD $EXTRA_ARGS"
+        
+        run_gmx "$MD_CMD" \
                 "$MD_GRO" "MD模拟"
     fi
 
