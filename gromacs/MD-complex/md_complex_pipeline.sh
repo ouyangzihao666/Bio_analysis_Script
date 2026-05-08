@@ -133,7 +133,7 @@ fi
 required_tools=("antechamber" "parmchk2" "acpype" "obabel")
 for tool in "${required_tools[@]}"; do
     if ! command -v "$tool" &> /dev/null; then
-        echo "错误：未找到$tool命令，请执行 conda install -c conda-forge ambertools acpype openbabel -y 安装"
+        echo "错误：未找到$tool命令 ，请执行 conda install -c conda-forge ambertools acpype openbabel -y 安装"
         exit 1
     fi
 done
@@ -181,6 +181,17 @@ log "INFO" "工作目录: $WORK_DIR"
 if [ ! -f "$GROUP_FILE" ]; then log "ERROR" "group文件不存在: $GROUP_FILE"; exit 1; fi
 MDP_DIR=$(realpath "$MDP_DIR")
 if [ ! -d "$MDP_DIR" ]; then log "ERROR" "MDP目录不存在: $MDP_DIR"; exit 1; fi
+
+# 8. 加载轨迹校正模块
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+TRAJ_CORRECTION_MODULE="$SCRIPT_DIR/traj_correction_module.sh"
+if [ -f "$TRAJ_CORRECTION_MODULE" ]; then
+    source "$TRAJ_CORRECTION_MODULE"
+    log "INFO" "已加载轨迹校正模块: $TRAJ_CORRECTION_MODULE"
+else
+    log "WARNING" "未找到轨迹校正模块: $TRAJ_CORRECTION_MODULE ，跳过轨迹校正"
+    PERFORM_TRAJ_CORRECTION="false"
+fi
 
 # ====================== 主流程 ======================
 mapfile -t COMPLEX_LINES < <(grep -v '^#' "$GROUP_FILE" | grep -v '^$')
@@ -405,6 +416,17 @@ for line in "${COMPLEX_LINES[@]}"; do
         run_gmx "$MD_CMD" "$MD_GRO" "MD生产模拟"
     fi
 
+    # ====================== 步骤11：轨迹周期性校正 ======================
+    if [ "$PERFORM_TRAJ_CORRECTION" = "true" ] && declare -f perform_traj_correction &> /dev/null; then
+        perform_traj_correction \
+            "$SYSTEM_DIR" \
+            "$SYSTEM_NAME" \
+            "$CENTER_GROUP" \
+            "$OUTPUT_GROUP" \
+            "$TRAJ_CORRECTION_METHOD" \
+            "$SKIP_EXISTING"
+    fi
+    
     log "INFO" "===== 体系 ${SYSTEM_NAME}_${LIGAND_NAME} 处理完成 ====="
     cd "$USER_CWD" || exit 1
 done
