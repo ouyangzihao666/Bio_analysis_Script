@@ -208,19 +208,6 @@ for param in "${required_params[@]}"; do
     check_required_param "$param"
 done
 
-# 执行数值参数检查
-log "INFO" "开始验证数值参数"
-check_positive_number "BOX_DISTANCE"
-check_positive_number "ION_CONCENTRATION"
-
-# 执行可选参数检查
-if [ -n "${NUM_THREADS:-}" ]; then
-    check_positive_number "NUM_THREADS"
-fi
-if [ -n "${GPU_ID:-}" ]; then
-    log "INFO" "GPU ID已设置: $GPU_ID"
-fi
-
 # === 路径处理函数 ===
 # 将相对路径转换为基于工作目录的绝对路径
 # 支持包含空格的路径
