@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-# ====================== 基础功能函数（如果被独立调用则定义） ======================
+# ====================== 基础功能函数（独立调用时定义） ======================
 if ! declare -f log &> /dev/null; then
     log() {
         local level="$1"
@@ -53,8 +53,7 @@ if ! declare -f run_gmx &> /dev/null; then
 fi
 
 # ====================== 核心校正函数（供主脚本调用） ======================
-perform_traj_correction() {
-    # 调用前必须先进入目标输出目录
+# 调用前必须先进入目标输出目录
 # 参数：输入TPR, 输入轨迹, 输入GRO, 输出前缀, 居中组, 输出组, 校正方法, 跳过已存在
 perform_traj_correction() {
     local INPUT_TPR="$1"
@@ -150,7 +149,6 @@ perform_traj_correction() {
 
 # ====================== 独立调用入口（如果直接执行此脚本） ======================
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    # 解析命令行参数
     usage() {
         echo "Usage: $0 -t <input_tpr> -x <input_xtc> -g <input_gro> -p <output_prefix>"
         echo "       [-c <center_group>] [-o <output_group>] [-m <method>] [-s <skip_existing>]"
