@@ -111,7 +111,7 @@ parse_arguments() {
 }
 
 # 加载轨迹校正函数
-source_traj_model() {
+source_traj_module() {
     SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
     TRAJ_CORRECTION_MODULE="$SCRIPT_DIR/../MD-complex/traj_correction_module.sh"
     if [ -f "$TRAJ_CORRECTION_MODULE" ]; then
@@ -168,7 +168,7 @@ source "$CONFIG_FILE"
 setup_logging
 
 if [ "$PERFORM_TRAJ_CORRECTION" = "true" ]; then
-    source_traj_model
+    source_traj_module
 fi
 
 # ========== 参数验证函数 ==========
@@ -561,16 +561,16 @@ for protein in "${PROTEINS[@]}"; do
     if [ "$PERFORM_TRAJ_CORRECTION" = "true" ] && declare -f perform_traj_correction &> /dev/null; then
         STEP_DIR="../09_traj_correction"
         mkdir -p "$STEP_DIR"
-        cd "$STEP_DIR" || exit 1
+        cd "$STEP_DIR"
 
         perform_traj_correction \
-            "../10_md_production/${SYSTEM_NAME}_md.tpr" \
-            "../10_md_production/${SYSTEM_NAME}_md.xtc" \
-            "../10_md_production/${SYSTEM_NAME}_md.gro" \
-            "${SYSTEM_NAME}_md" \
-            "Protein" \
-            "System" \
-            "pbc_mol" \
+            "../08_md_production/${MD_TPR}" \
+            "../08_md_production/${MD_GRO}" \
+            "../08_md_production/${MD_XTC}" \
+            "${protein_name}_md" \
+            "$CENTER_GROUP" \
+            "$OUTPUT_GROUP" \
+            "$TRAJ_CORRECTION_METHOD" \
             "$SKIP_EXISTING"
 
     fi
