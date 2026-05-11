@@ -54,39 +54,31 @@ fi
 
 # ====================== 核心校正函数（供主脚本调用） ======================
 perform_traj_correction() {
-    # 输入参数（从主脚本传递）
-    local SYSTEM_DIR="$1"
-    local SYSTEM_NAME="$2"
-    local CENTER_GROUP="${3:-Protein}"
-    local OUTPUT_GROUP="${4:-System}"
-    local TRAJ_CORRECTION_METHOD="${5:-pbc_mol}"
-    local SKIP_EXISTING="${6:-true}"
+    # 调用前必须先进入目标输出目录
+# 参数：输入TPR, 输入轨迹, 输入GRO, 输出前缀, 居中组, 输出组, 校正方法, 跳过已存在
+perform_traj_correction() {
+    local INPUT_TPR="$1"
+    local INPUT_TRAJ="$2"
+    local INPUT_GRO="$3"
+    local OUTPUT_PREFIX="$4"
+    local CENTER_GROUP="${5:-Protein}"
+    local OUTPUT_GROUP="${6:-System}"
+    local TRAJ_CORRECTION_METHOD="${7:-pbc_mol}"
+    local SKIP_EXISTING="${8:-true}"
 
-    # 切换到体系目录
-    cd "$SYSTEM_DIR" || exit 1
-    log "INFO" "===== 开始轨迹周期性校正: ${SYSTEM_NAME} ====="
-
-    # 定义输入文件（来自步骤10的MD结果）
-    local INPUT_TPR="${SYSTEM_DIR}/10_md_production/${SYSTEM_NAME}_md.tpr"
-    local INPUT_TRAJ="${SYSTEM_DIR}/10_md_production/${SYSTEM_NAME}_md.xtc"
-    local INPUT_GRO="${SYSTEM_DIR}/10_md_production/${SYSTEM_NAME}_md.gro"
+    log "INFO" "===== 开始轨迹周期性校正: ${OUTPUT_PREFIX} ====="
 
     # 前置检查
     if [ ! -f "$INPUT_TPR" ] || [ ! -f "$INPUT_TRAJ" ] || [ ! -f "$INPUT_GRO" ]; then
-        log "ERROR" "轨迹校正失败：MD生产模拟结果文件不存在"
+        log "ERROR" "轨迹校正失败：输入文件不存在"
         log "ERROR" "请检查: $INPUT_TPR, $INPUT_TRAJ, $INPUT_GRO"
         return 1
     fi
 
-    # 创建校正目录
-    local STEP_DIR="${SYSTEM_DIR}/11_traj_correction"
-    mkdir -p "$STEP_DIR"
-    cd "$STEP_DIR" || exit 1
-
     # 定义输出文件
-    local CORRECTED_TRAJ="${SYSTEM_NAME}_md_corrected.xtc"
-    local CORRECTED_GRO="${SYSTEM_NAME}_md_corrected.gro"
-    local REF_FRAME="${SYSTEM_NAME}_first_frame.gro"
+    local CORRECTED_TRAJ="${OUTPUT_PREFIX}_corrected.xtc"
+    local CORRECTED_GRO="${OUTPUT_PREFIX}_corrected.gro"
+    local REF_FRAME="${OUTPUT_PREFIX}_first_frame.gro"
 
     # 跳过已完成的校正
     if ! check_and_skip "$CORRECTED_TRAJ" "轨迹周期性校正"; then
@@ -101,7 +93,7 @@ perform_traj_correction() {
 
 
         # ---------------- 步骤1：使分子完整 ----------------
-        local TRAJ_WHOLE="${SYSTEM_NAME}_temp_whole.xtc"
+        local TRAJ_WHOLE="${OUTPUT_PREFIX}_temp_whole.xtc"
         if ! check_and_skip "$TRAJ_WHOLE" "步骤1/5：使分子完整"; then
             run_gmx "echo 'System' | gmx trjconv -f '$INPUT_TRAJ' -s '$INPUT_TPR' -o '$TRAJ_WHOLE' -pbc whole" \
                     "$TRAJ_WHOLE" "步骤1/5：使分子完整"
@@ -114,9 +106,8 @@ perform_traj_correction() {
         fi
 
         # ---------------- 步骤3：去周期性跳跃 ----------------
-        local TRAJ_NOJUMP="${SYSTEM_NAME}_temp_nojump.xtc"
+        local TRAJ_NOJUMP="${OUTPUT_PREFIX}_temp_nojump.xtc"
         if ! check_and_skip "$TRAJ_NOJUMP" "步骤3/5：去周期性跳跃"; then
-            # 关键：使用提取的第一帧作为-s参考，避免撤销整分子操作
             run_gmx "echo 'System' | gmx trjconv -f '$TRAJ_WHOLE' -s '$REF_FRAME' -o '$TRAJ_NOJUMP' -pbc nojump" \
                     "$TRAJ_NOJUMP" "步骤3/5：去周期性跳跃"
         fi
@@ -151,19 +142,22 @@ perform_traj_correction() {
         rm -f "$TRAJ_WHOLE" "$TRAJ_NOJUMP" "$REF_FRAME"
     fi
 
-    log "INFO" "===== 轨迹周期性校正完成: ${SYSTEM_NAME} ====="
+    log "INFO" "===== 轨迹周期性校正完成: ${OUTPUT_PREFIX} ====="
     log "INFO" "最终输出文件："
-    log "INFO" "  - 校正轨迹：$STEP_DIR/$CORRECTED_TRAJ"
-    log "INFO" "  - 校正结构：$STEP_DIR/$CORRECTED_GRO"
+    log "INFO" "  - 校正轨迹：$(pwd)/$CORRECTED_TRAJ"
+    log "INFO" "  - 校正结构：$(pwd)/$CORRECTED_GRO"
 }
 
 # ====================== 独立调用入口（如果直接执行此脚本） ======================
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     # 解析命令行参数
     usage() {
-        echo "Usage: $0 -d <system_dir> -n <system_name> [-c <center_group>] [-o <output_group>] [-m <method>] [-s <skip_existing>]"
-        echo "  -d: 体系根目录（包含10_md_production的目录）"
-        echo "  -n: 体系名称（如 TVTLW+YKR_BEA）"
+        echo "Usage: $0 -t <input_tpr> -x <input_xtc> -g <input_gro> -p <output_prefix>"
+        echo "       [-c <center_group>] [-o <output_group>] [-m <method>] [-s <skip_existing>]"
+        echo "  -t: 输入TPR文件"
+        echo "  -x: 输入轨迹文件"
+        echo "  -g: 输入GRO文件"
+        echo "  -p: 输出文件前缀"
         echo "  -c: 居中组（默认：Protein）"
         echo "  -o: 输出组（默认：System）"
         echo "  -m: 校正方法（pbc_none/pbc_nojump/pbc_mol/pbc_atom，默认：pbc_mol）"
@@ -176,13 +170,17 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     OUTPUT_GROUP="System"
     TRAJ_CORRECTION_METHOD="pbc_mol"
     SKIP_EXISTING="true"
-    SYSTEM_DIR=""
-    SYSTEM_NAME=""
+    INPUT_TPR=""
+    INPUT_TRAJ=""
+    INPUT_GRO=""
+    OUTPUT_PREFIX=""
 
-    while getopts "d:n:c:o:m:s:h" opt; do
+    while getopts "t:x:g:p:c:o:m:s:h" opt; do
         case "$opt" in
-            d) SYSTEM_DIR=$(realpath "$OPTARG") ;;
-            n) SYSTEM_NAME="$OPTARG" ;;
+            t) INPUT_TPR=$(realpath "$OPTARG") ;;
+            x) INPUT_TRAJ=$(realpath "$OPTARG") ;;
+            g) INPUT_GRO=$(realpath "$OPTARG") ;;
+            p) OUTPUT_PREFIX="$OPTARG" ;;
             c) CENTER_GROUP="$OPTARG" ;;
             o) OUTPUT_GROUP="$OPTARG" ;;
             m) TRAJ_CORRECTION_METHOD="$OPTARG" ;;
@@ -193,11 +191,19 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     done
 
     # 验证必填参数
-    if [ -z "$SYSTEM_DIR" ] || [ -z "$SYSTEM_NAME" ]; then
-        echo "错误：必须指定 -d（体系目录）和 -n（体系名称）"
+    if [ -z "$INPUT_TPR" ] || [ -z "$INPUT_TRAJ" ] || [ -z "$INPUT_GRO" ] || [ -z "$OUTPUT_PREFIX" ]; then
+        echo "错误：必须指定 -t（TPR）、-x（轨迹）、-g（GRO）和 -p（输出前缀）"
         usage
     fi
 
     # 执行校正
-    perform_traj_correction "$SYSTEM_DIR" "$SYSTEM_NAME" "$CENTER_GROUP" "$OUTPUT_GROUP" "$TRAJ_CORRECTION_METHOD" "$SKIP_EXISTING"
+    perform_traj_correction \
+        "$INPUT_TPR" \
+        "$INPUT_TRAJ" \
+        "$INPUT_GRO" \
+        "$OUTPUT_PREFIX" \
+        "$CENTER_GROUP" \
+        "$OUTPUT_GROUP" \
+        "$TRAJ_CORRECTION_METHOD" \
+        "$SKIP_EXISTING"
 fi

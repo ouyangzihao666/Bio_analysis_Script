@@ -110,6 +110,19 @@ parse_arguments() {
     echo "使用配置文件: $CONFIG_FILE"
 }
 
+# 加载轨迹校正函数
+source_traj_model() {
+    SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+    TRAJ_CORRECTION_MODULE="$SCRIPT_DIR/../MD-complex/traj_correction_module.sh"
+    if [ -f "$TRAJ_CORRECTION_MODULE" ]; then
+        source "$TRAJ_CORRECTION_MODULE"
+        log "INFO" "已加载轨迹校正模块: $TRAJ_CORRECTION_MODULE"
+    else
+        log "WARNING" "未找到轨迹校正模块: $TRAJ_CORRECTION_MODULE ，跳过轨迹校正"
+        PERFORM_TRAJ_CORRECTION="false"
+    fi
+}
+
 # ========== 初始化 ==========
 
 # 检查GROMACS环境
@@ -153,6 +166,10 @@ source "$CONFIG_FILE"
 
 # 重新初始化日志，使用配置文件中的工作目录
 setup_logging
+
+if [ "$PERFORM_TRAJ_CORRECTION" = "true" ]; then
+    source_traj_model
+fi
 
 # ========== 参数验证函数 ==========
 
@@ -534,53 +551,29 @@ for protein in "${PROTEINS[@]}"; do
     fi
 
     # 步骤9: 轨迹周期性校正
-    STEP_DIR="../08_md_production"
-    # mkdir -p "$STEP_DIR"
-    cd "$STEP_DIR"
+    # 遵循官方推荐工作流：
+        # 1. 使分子完整 (Whole)
+        # 2. 聚类 (Cluster, 可选)
+        # 3. 去跳跃 (NoJump, 需第一帧参考)
+        # 4. 中心化 (Center)
+        # 5. 盒子调整 (PBC + Unit Cell)
+    # 调用其他脚本完成此步骤。脚本路径为../MD-complex/traj_correction_module.sh
+    if [ "$PERFORM_TRAJ_CORRECTION" = "true" ] && declare -f perform_traj_correction &> /dev/null; then
+        STEP_DIR="../09_traj_correction"
+        mkdir -p "$STEP_DIR"
+        cd "$STEP_DIR" || exit 1
 
-    CORRECTED_TRAJ="${protein_name}_md_noPBC.xtc"
+        perform_traj_correction \
+            "../10_md_production/${SYSTEM_NAME}_md.tpr" \
+            "../10_md_production/${SYSTEM_NAME}_md.xtc" \
+            "../10_md_production/${SYSTEM_NAME}_md.gro" \
+            "${SYSTEM_NAME}_md" \
+            "Protein" \
+            "System" \
+            "pbc_mol" \
+            "$SKIP_EXISTING"
 
-    if ! check_and_skip "$CORRECTED_TRAJ" "轨迹周期性校正"; then
-        if [ "$PERFORM_TRAJ_CORRECTION" = "true" ]; then
-            log "INFO" "运行轨迹周期性校正..."
-            
-            case "$TRAJ_CORRECTION_METHOD" in
-                "pbc_nojump")
-                    # 无跳跃周期性校正
-                    run_gmx "echo -e '${CENTER_GROUP}\\n${OUTPUT_GROUP}' | gmx trjconv -s '../08_md_production/${protein_name}_md.tpr' -f '../08_md_production/${protein_name}_md.xtc' -o '$CORRECTED_TRAJ' -pbc nojump -center" \
-                            "$CORRECTED_TRAJ" "轨迹周期性校正(pbc nojump + center)"
-                    ;;
-                "pbc_atom")
-                    # 原子周期性校正
-                    run_gmx "echo -e '${CENTER_GROUP}\\n${OUTPUT_GROUP}' | gmx trjconv -s '../08_md_production/${protein_name}_md.tpr' -f '../08_md_production/${protein_name}_md.xtc' -o '$CORRECTED_TRAJ' -pbc atom -center" \
-                            "$CORRECTED_TRAJ" "轨迹周期性校正(pbc atom + center)"
-                    ;;
-                "pbc_mol")
-                    # 默认方法：分子周期性校正 + 居中
-                    ;&
-                *)
-                    log "WARNING" "未知的校正方法: $TRAJ_CORRECTION_METHOD，使用默认方法 pbc_mol"
-                    run_gmx "echo -e '${CENTER_GROUP}\\n${OUTPUT_GROUP}' | gmx trjconv -s '../08_md_production/${protein_name}_md.tpr' -f '../08_md_production/${protein_name}_md.xtc' -o '$CORRECTED_TRAJ' -pbc mol -center" \
-                            "$CORRECTED_TRAJ" "轨迹周期性校正(pbc mol + center)"
-                    ;;
-            esac
-        else
-            # 如果不执行校正，创建原始轨迹的符号链接
-            log "INFO" "跳过轨迹校正，使用原始轨迹"
-            local xtc_file="${protein_name}_md.xtc"
-            if [ -f "$xtc_file" ]; then
-                ln -sf "$xtc_file" "$CORRECTED_TRAJ"
-                log "INFO" "已创建原始轨迹的符号链接: $CORRECTED_TRAJ -> $xtc_file"
-            else
-                log "ERROR" "原始轨迹文件不存在: $xtc_file"
-                exit 1
-            fi
-        fi
-        
     fi
-    
-    log "INFO" "完成蛋白质 $protein_name 的处理"
-    cd "$WORK_DIR" || exit 1
 done
 
 # 生成模拟结果汇总

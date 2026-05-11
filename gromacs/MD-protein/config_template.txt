@@ -134,25 +134,27 @@ SKIP_EXISTING="true"
 # ======================================
 
 # 是否执行轨迹周期性校正
-# true：对模拟轨迹进行周期性边界条件校正
-# false：直接使用原始轨迹
-# PERFORM_TRAJ_CORRECTION="true"
+# true：在MD生产模拟完成后自动执行轨迹校正
+# false：跳过轨迹校正步骤
+PERFORM_TRAJ_CORRECTION="true"
 
-# 轨迹校正方法：定义如何处理周期性边界条件
-# 选项：
-#   pbc_nojump：无跳跃校正，适用于大多数体系
-#   pbc_atom：原子级校正
-#   pbc_mol：分子级校正，默认选项
-#   pbc_none：不校正
-# TRAJ_CORRECTION_METHOD="pbc_mol"
+# 轨迹校正方法（严格遵循GROMACS官方推荐工作流）
+# 可选值：
+#   pbc_none：不执行任何PBC校正，仅复制原始轨迹
+#   pbc_nojump：仅去除周期性跳跃，保证轨迹连续，但分子可能移出盒子
+#   pbc_mol：分子级PBC校正（推荐），将分子质心收拢到盒子内
+#   pbc_atom：原子级PBC校正，将所有原子单独收拢到盒子内
+#   pbc_res：残基级PBC校正，将残基质心收拢到盒子内
+TRAJ_CORRECTION_METHOD="pbc_mol"
 
-# 校正时用于居中的组：将该组居中到盒子中心
-# 常用选项：Protein, System, C-alpha等
-# CENTER_GROUP="Protein"
+# 校正时用于居中的组：将该组的几何中心对齐到盒子中心
+# 常用选项：Protein, C-alpha, Backbone, Protein_Ligand（需在索引文件中定义）
+CENTER_GROUP="Protein"
 
-# 校正后输出的组：最终保存的轨迹包含哪些原子组
-# 常用选项：System（保存整个体系）
-# OUTPUT_GROUP="System"
+# 校正后输出的组：最终保存的轨迹包含哪些原子
+# 常用选项：System（保存整个体系：蛋白+配体+水+离子）
+#          Protein_Ligand（仅保存蛋白和配体，节省空间）
+OUTPUT_GROUP="System"
 
 
 # ======================================

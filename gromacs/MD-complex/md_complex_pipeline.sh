@@ -416,17 +416,26 @@ for line in "${COMPLEX_LINES[@]}"; do
         run_gmx "$MD_CMD" "$MD_GRO" "MD生产模拟"
     fi
 
-    # ====================== 步骤11：轨迹周期性校正 ======================
+        # ====================== 步骤11：轨迹周期性校正 ======================
     if [ "$PERFORM_TRAJ_CORRECTION" = "true" ] && declare -f perform_traj_correction &> /dev/null; then
+        STEP_DIR="11_traj_correction"
+        mkdir -p "$STEP_DIR"
+        cd "$STEP_DIR" || exit 1
+
         perform_traj_correction \
-            "$SYSTEM_DIR" \
-            "$SYSTEM_NAME" \
+            "../10_md_production/${SYSTEM_NAME}_md.tpr" \
+            "../10_md_production/${SYSTEM_NAME}_md.xtc" \
+            "../10_md_production/${SYSTEM_NAME}_md.gro" \
+            "${SYSTEM_NAME}_md" \
             "$CENTER_GROUP" \
             "$OUTPUT_GROUP" \
             "$TRAJ_CORRECTION_METHOD" \
             "$SKIP_EXISTING"
+
+        cd "$SYSTEM_DIR" || exit 1
     fi
-    
+    # ====================================================================
+
     log "INFO" "===== 体系 ${SYSTEM_NAME}_${LIGAND_NAME} 处理完成 ====="
     cd "$USER_CWD" || exit 1
 done
