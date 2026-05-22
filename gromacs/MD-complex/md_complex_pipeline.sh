@@ -61,8 +61,8 @@ process_ligand() {
     local LIGAND_GRO="${ligand_name}_GMX.gro"
     
     if ! check_and_skip "$LIGAND_ITP" "配体${ligand_name}拓扑生成"; then
-        log "INFO" "用OpenBabel预处理配体：加氢、优化3D结构"
-        run_gmx "obabel '$ligand_sdf' -O '$LIGAND_SDF_H' -h --gen3d" \
+        log "INFO" "用OpenBabel预处理配体：加氢"
+        run_gmx "obabel '$ligand_sdf' -O '$LIGAND_SDF_H' -h" \
                 "$LIGAND_SDF_H" "OpenBabel配体预处理"
         
         log "INFO" "开始执行: 配体电荷计算"

@@ -13,6 +13,7 @@ if [ $# -lt 2 ]; then
     echo "  gyrate     - 回转半径"
     echo "  hbond      - 氢键分析(蛋白-配体)"
     echo "  dssp       - 二级结构分析"
+    echo "  outpdb     - 导出pdb文件"
     echo "  all        - 运行所有分析"
     echo ""
     echo "示例:"
@@ -45,8 +46,9 @@ source "$DATA_ANALYSIS_LIB"
 # ====================== 默认参数设置 ======================
 SKIP_EXISTING="${SKIP_EXISTING:-true}"
 ANALYSIS_ROOT_DIR="${ANALYSIS_DIR:-analysis}"
-TPR_SUFFIX="${TPR_SUFFIX:-_md.tpr}"
-TRAJ_SUFFIX="${TRAJ_SUFFIX:-_corrected.xtc}"
+TPR_SUFFIX="${TPR_SUFFIX:-_md}"
+TRAJ_SUFFIX="${TRAJ_SUFFIX:-_md_corrected}"
+GRO_SUFFIX="${GRO_SUFFIX:-_md_corrected}"
 MD_PRODUCTION_DIR="${MD_PRODUCTION_DIR:-10_md_production}"
 TRAJ_CORRECTION_DIR="${TRAJ_CORRECTION_DIR:-11_traj_correction}"
 
@@ -109,8 +111,8 @@ case "$ANALYSIS_TYPE" in
         
         for SYSTEM_NAME in "${COMPLEXES[@]}"; do
             echo "===== 分析复合物: $SYSTEM_NAME ====="
-            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX"
+            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX.xtc"
             output_file="${SYSTEM_NAME}_rmsd.xvg"
             
             analyze_rmsd "$input_tpr" "$input_traj" "$output_file" "$RMSD_FIT_GROUP" "$RMSD_CAL_GROUP"
@@ -127,8 +129,8 @@ case "$ANALYSIS_TYPE" in
         
         for SYSTEM_NAME in "${COMPLEXES[@]}"; do
             echo "===== 分析复合物: $SYSTEM_NAME ====="
-            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX"
+            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX.xtc"
             output_file="${SYSTEM_NAME}_rmsf.xvg"
             
             analyze_rmsf "$input_tpr" "$input_traj" "$output_file" "$RMSF_CAL_GROUP"
@@ -145,8 +147,8 @@ case "$ANALYSIS_TYPE" in
         
         for SYSTEM_NAME in "${COMPLEXES[@]}"; do
             echo "===== 分析复合物: $SYSTEM_NAME ====="
-            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX"
+            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX.xtc"
             output_file="${SYSTEM_NAME}_gyrate.xvg"
             
             analyze_gyrate "$input_tpr" "$input_traj" "$output_file" "$GYRATE_CAL_GROUP"
@@ -164,8 +166,8 @@ case "$ANALYSIS_TYPE" in
         
         for SYSTEM_NAME in "${COMPLEXES[@]}"; do
             echo "===== 分析复合物: $SYSTEM_NAME ====="
-            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX"
+            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX.xtc"
             output_file="${SYSTEM_NAME}_hbnum.xvg"
             
             analyze_hbond "$input_tpr" "$input_traj" "$output_file" "$HBOND_REF_GROUP" "$HBOND_TARGET_GROUP"
@@ -182,12 +184,29 @@ case "$ANALYSIS_TYPE" in
         
         for SYSTEM_NAME in "${COMPLEXES[@]}"; do
             echo "===== 分析复合物: $SYSTEM_NAME ====="
-            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX"
+            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$TRAJ_SUFFIX.xtc"
             output_dat="${SYSTEM_NAME}_dssp.dat"
             output_num="${SYSTEM_NAME}_dssp_num.xvg"
             
             analyze_dssp "$input_tpr" "$input_traj" "$output_dat" "$output_num" "$DSSP_CAL_GROUP"
+        done
+        cd ..
+        ;;
+
+    "outpdb")
+        
+        ANALYSIS_DIR="outpdb"
+        mkdir -p "$ANALYSIS_DIR"
+        cd "$ANALYSIS_DIR" || exit 1
+        
+        for SYSTEM_NAME in "${COMPLEXES[@]}"; do
+            echo "===== 分析复合物: $SYSTEM_NAME ====="
+            input_tpr="$WORK_DIR/$SYSTEM_NAME/$MD_PRODUCTION_DIR/$SYSTEM_NAME$TPR_SUFFIX.tpr"
+            input_gro="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$GRO_SUFFIX.gro"
+            output_pdb="${SYSTEM_NAME}_md_corrected.pdb"
+            
+            export_pdb "$input_tpr" "$input_gro" "$output_pdb"
         done
         cd ..
         ;;

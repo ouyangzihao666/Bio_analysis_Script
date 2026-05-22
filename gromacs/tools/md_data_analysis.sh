@@ -108,3 +108,15 @@ analyze_dssp() {
                 "$output_dat" "二级结构分析"
     fi
 }
+
+# pdb文件导出
+export_pdb() {
+    local input_tpr="$1"
+    local input_gro="$2"
+    local output_file="$3"
+    
+    if ! check_and_skip "$output_file" "pdb文件导出"; then
+        run_gmx "gmx trjconv -s '$input_tpr' -f '$input_gro' -o '$output_file'" \
+                "$output_file" "pdb文件导出"
+    fi
+}

@@ -13,6 +13,7 @@ if [ $# -lt 2 ]; then
     echo "  gyrate     - 回转半径"
     echo "  hbond      - 氢键分析"
     echo "  dssp       - 二级结构分析"
+    echo "  outpdb     - 导出pdb文件"
     echo "  all        - 运行所有分析"
     echo ""
     echo "示例:"
@@ -45,8 +46,9 @@ source "$DATA_ANALYSIS_LIB"
 # ====================== 默认参数设置 ======================
 SKIP_EXISTING="${SKIP_EXISTING:-true}"
 ANALYSIS_ROOT_DIR="${ANALYSIS_DIR:-analysis}"
-TPR_SUFFIX="${TPR_SUFFIX:-_md.tpr}"
-TRAJ_SUFFIX="${TRAJ_SUFFIX:-_md_corrected.xtc}"
+TPR_SUFFIX="${TPR_SUFFIX:-_md}"
+TRAJ_SUFFIX="${TRAJ_SUFFIX:-_md_corrected}"
+GRO_SUFFIX="${GRO_SUFFIX:-_md_corrected}"
 MD_PRODUCTION_DIR="${MD_PRODUCTION_DIR:-08_md_production}"
 TRAJ_CORRECTION_DIR="${TRAJ_CORRECTION_DIR:-09_traj_correction}"
 
@@ -69,11 +71,11 @@ IFS=',' read -ra PROTEINS <<< "$PROTEIN_LIST"
 # 过滤特定蛋白质
 if [ -n "$SPECIFIC_PROTEIN" ]; then
     FILTERED_PROTEINS=()
-    for protein in "${PROTEINS[@]}"; do
-        protein=$(echo "$protein" | xargs)
-        protein_name=$(basename "$protein" .pdb)
-        if [ "$protein_name" = "$SPECIFIC_PROTEIN" ]; then
-            FILTERED_PROTEINS=("$protein_name")
+    for PROTEIN in "${PROTEINS[@]}"; do
+        PROTEIN=$(echo "$PROTEIN" | xargs)
+        PROTEIN_NAME=$(basename "$PROTEIN" .pdb)
+        if [ "$PROTEIN_NAME" = "$SPECIFIC_PROTEIN" ]; then
+            FILTERED_PROTEINS=("$PROTEIN_NAME")
             break
         fi
     done
@@ -103,11 +105,11 @@ case "$ANALYSIS_TYPE" in
         mkdir -p "$ANALYSIS_DIR"
         cd "$ANALYSIS_DIR" || exit 1
         
-        for protein_name in "${PROTEINS[@]}"; do
-            echo "===== 分析蛋白质: $protein_name ====="
-            input_tpr="$WORK_DIR/$protein_name/$MD_PRODUCTION_DIR/$protein_name$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$protein_name/$TRAJ_CORRECTION_DIR/$protein_name$TRAJ_SUFFIX"
-            output_file="${protein_name}_rmsd.xvg"
+        for PROTEIN_NAME in "${PROTEINS[@]}"; do
+            echo "===== 分析蛋白质: $PROTEIN_NAME ====="
+            input_tpr="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$PROTEIN_NAME/$TRAJ_CORRECTION_DIR/$PROTEIN_NAME$TRAJ_SUFFIX.xtc"
+            output_file="${PROTEIN_NAME}_rmsd.xvg"
             
             analyze_rmsd "$input_tpr" "$input_traj" "$output_file" "$RMSD_FIT_GROUP" "$RMSD_CAL_GROUP"
         done
@@ -121,11 +123,11 @@ case "$ANALYSIS_TYPE" in
         mkdir -p "$ANALYSIS_DIR"
         cd "$ANALYSIS_DIR" || exit 1
         
-        for protein_name in "${PROTEINS[@]}"; do
-            echo "===== 分析蛋白质: $protein_name ====="
-            input_tpr="$WORK_DIR/$protein_name/$MD_PRODUCTION_DIR/$protein_name$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$protein_name/$TRAJ_CORRECTION_DIR/$protein_name$TRAJ_SUFFIX"
-            output_file="${protein_name}_rmsf.xvg"
+        for PROTEIN_NAME in "${PROTEINS[@]}"; do
+            echo "===== 分析蛋白质: $PROTEIN_NAME ====="
+            input_tpr="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$PROTEIN_NAME/$TRAJ_CORRECTION_DIR/$PROTEIN_NAME$TRAJ_SUFFIX.xtc"
+            output_file="${PROTEIN_NAME}_rmsf.xvg"
             
             analyze_rmsf "$input_tpr" "$input_traj" "$output_file" "$RMSF_CAL_GROUP"
         done
@@ -139,11 +141,11 @@ case "$ANALYSIS_TYPE" in
         mkdir -p "$ANALYSIS_DIR"
         cd "$ANALYSIS_DIR" || exit 1
         
-        for protein_name in "${PROTEINS[@]}"; do
-            echo "===== 分析蛋白质: $protein_name ====="
-            input_tpr="$WORK_DIR/$protein_name/$MD_PRODUCTION_DIR/$protein_name$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$protein_name/$TRAJ_CORRECTION_DIR/$protein_name$TRAJ_SUFFIX"
-            output_file="${protein_name}_gyrate.xvg"
+        for PROTEIN_NAME in "${PROTEINS[@]}"; do
+            echo "===== 分析蛋白质: $PROTEIN_NAME ====="
+            input_tpr="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$PROTEIN_NAME/$TRAJ_CORRECTION_DIR/$PROTEIN_NAME$TRAJ_SUFFIX.xtc"
+            output_file="${PROTEIN_NAME}_gyrate.xvg"
             
             analyze_gyrate "$input_tpr" "$input_traj" "$output_file" "$GYRATE_CAL_GROUP"
         done
@@ -158,11 +160,11 @@ case "$ANALYSIS_TYPE" in
         mkdir -p "$ANALYSIS_DIR"
         cd "$ANALYSIS_DIR" || exit 1
         
-        for protein_name in "${PROTEINS[@]}"; do
-            echo "===== 分析蛋白质: $protein_name ====="
-            input_tpr="$WORK_DIR/$protein_name/$MD_PRODUCTION_DIR/$protein_name$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$protein_name/$TRAJ_CORRECTION_DIR/$protein_name$TRAJ_SUFFIX"
-            output_file="${protein_name}_hbnum.xvg"
+        for PROTEIN_NAME in "${PROTEINS[@]}"; do
+            echo "===== 分析蛋白质: $PROTEIN_NAME ====="
+            input_tpr="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$PROTEIN_NAME/$TRAJ_CORRECTION_DIR/$PROTEIN_NAME$TRAJ_SUFFIX.xtc"
+            output_file="${PROTEIN_NAME}_hbnum.xvg"
             
             analyze_hbond "$input_tpr" "$input_traj" "$output_file" "$HBOND_REF_GROUP" "$HBOND_TARGET_GROUP"
         done
@@ -176,14 +178,31 @@ case "$ANALYSIS_TYPE" in
         mkdir -p "$ANALYSIS_DIR"
         cd "$ANALYSIS_DIR" || exit 1
         
-        for protein_name in "${PROTEINS[@]}"; do
-            echo "===== 分析蛋白质: $protein_name ====="
-            input_tpr="$WORK_DIR/$protein_name/$MD_PRODUCTION_DIR/$protein_name$TPR_SUFFIX"
-            input_traj="$WORK_DIR/$protein_name/$TRAJ_CORRECTION_DIR/$protein_name$TRAJ_SUFFIX"
-            output_dat="${protein_name}_dssp.dat"
-            output_num="${protein_name}_dssp_num.xvg"
+        for PROTEIN_NAME in "${PROTEINS[@]}"; do
+            echo "===== 分析蛋白质: $PROTEIN_NAME ====="
+            input_tpr="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$TPR_SUFFIX.tpr"
+            input_traj="$WORK_DIR/$PROTEIN_NAME/$TRAJ_CORRECTION_DIR/$PROTEIN_NAME$TRAJ_SUFFIX.xtc"
+            output_dat="${PROTEIN_NAME}_dssp.dat"
+            output_num="${PROTEIN_NAME}_dssp_num.xvg"
             
             analyze_dssp "$input_tpr" "$input_traj" "$output_dat" "$output_num" "$DSSP_CAL_GROUP"
+        done
+        cd ..
+        ;;
+
+    "outpdb")
+        
+        ANALYSIS_DIR="outpdb"
+        mkdir -p "$ANALYSIS_DIR"
+        cd "$ANALYSIS_DIR" || exit 1
+        
+        for SYSTEM_NAME in "${COMPLEXES[@]}"; do
+            echo "===== 导出复合物: $SYSTEM_NAME ====="
+            input_tpr="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$TPR_SUFFIX.tpr"
+            input_gro="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$GRO_SUFFIX.gro"
+            output_pdb="${PROTEIN_NAME}_md_corrected.pdb"
+            
+            export_pdb "$input_tpr" "$input_gro" "$output_pdb"
         done
         cd ..
         ;;

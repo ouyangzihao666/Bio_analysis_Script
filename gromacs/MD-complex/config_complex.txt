@@ -94,8 +94,9 @@ MD_PRODUCTION_DIR="10_md_production"
 TRAJ_CORRECTION_DIR="11_traj_correction"
 
 # 轨迹文件后缀（使用校正后的轨迹）
-TPR_SUFFIX="_md.tpr"
-TRAJ_SUFFIX="_md_corrected.xtc"
+TPR_SUFFIX="_md"
+TRAJ_SUFFIX="_md_corrected"
+GRO_SUFFIX="_md_corrected"
 
 # RMSD分析参数
 RMSD_FIT_GROUP="C-alpha"       # 拟合组（通常是蛋白主链）
