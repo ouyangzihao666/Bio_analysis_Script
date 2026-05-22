@@ -161,35 +161,36 @@ OUTPUT_GROUP="System"
 # 8. MD分析参数（预留）
 # ======================================
 
-# 分析输出目录：用于保存分析结果的目录
-# ANALYSIS_DIR="analysis"
-
-# 轨迹文件后缀：校正后轨迹文件的后缀名
-# TRAJ_SUFFIX="_md_noPBC.xtc"
-
-# TPR文件后缀：用于分析的TPR文件后缀名
-# TPR_SUFFIX="_md.tpr"
+# 分析结果保存目录
+ANALYSIS_DIR="analysis"
 
 # 是否跳过已存在的分析结果
-# SKIP_EXISTING="true"
+SKIP_EXISTING="true"
 
-# 分析时使用的索引组：根据需要设置不同分析使用的原子组
-# RMSD分析相关
-RMSD_fit_GROUP="C-alpha"   # RMSD拟合组：用于结构对齐的原子组
-RMSD_cal_GROUP="C-alpha"   # RMSD计算组：用于计算RMSD的原子组
+# MD生产目录和轨迹校正目录名称
+MD_PRODUCTION_DIR="10_md_production"
+TRAJ_CORRECTION_DIR="11_traj_correction"
 
-# RMSF分析相关
-RMSF_cal_GROUP="C-alpha"   # RMSF计算组：用于计算原子波动的原子组
+# 轨迹文件后缀（使用校正后的轨迹）
+TPR_SUFFIX="_md.tpr"
+TRAJ_SUFFIX="_md_corrected.xtc"
 
-# 回旋半径分析相关
-# GYRATE_cal_GROUP="Protein"  # 回旋半径计算组
+# RMSD分析参数
+RMSD_FIT_GROUP="C-alpha"       # 拟合组（通常是蛋白主链）
+RMSD_CAL_GROUP="C-alpha"       # 计算组
 
-# 氢键分析相关
-# HBOND_Ref_GROUP="MainChain+H"   # 氢键供体组
-# HBOND_Target_GROUP="MainChain+H" # 氢键受体组
+# RMSF分析参数
+RMSF_CAL_GROUP="Protein"        # 计算组（通常是C-alpha原子）
 
-# DSSP分析相关（二级结构）
-DSSP_cal_GROUP="Protein"   # DSSP计算组：用于计算二级结构的原子组
+# 回转半径分析参数
+GYRATE_CAL_GROUP="Protein"      # 计算组
+
+# 氢键分析参数
+HBOND_REF_GROUP="Protein"       # 参考组（蛋白）
+HBOND_TARGET_GROUP="Protein"     # 目标组
+
+# 二级结构分析参数
+DSSP_CAL_GROUP="Protein"        # 计算组
 
 
 # ======================================

@@ -79,9 +79,44 @@ CENTER_GROUP="Protein"
 #          Protein_Ligand（仅保存蛋白和配体，节省空间）
 OUTPUT_GROUP="System"
 
+# ======================================
+# 7. 数据分析
+# ======================================
+
+# 分析结果保存目录
+ANALYSIS_DIR="analysis"
+
+# 是否跳过已存在的分析结果
+SKIP_EXISTING="true"
+
+# MD生产目录和轨迹校正目录名称
+MD_PRODUCTION_DIR="10_md_production"
+TRAJ_CORRECTION_DIR="11_traj_correction"
+
+# 轨迹文件后缀（使用校正后的轨迹）
+TPR_SUFFIX="_md.tpr"
+TRAJ_SUFFIX="_md_corrected.xtc"
+
+# RMSD分析参数
+RMSD_FIT_GROUP="C-alpha"       # 拟合组（通常是蛋白主链）
+RMSD_CAL_GROUP="C-alpha"       # 计算组
+
+# RMSF分析参数
+RMSF_CAL_GROUP="Protein"        # 计算组（通常是C-alpha原子）
+
+# 回转半径分析参数
+GYRATE_CAL_GROUP="Protein"      # 计算组
+
+# 氢键分析参数
+HBOND_REF_GROUP="Protein"       # 参考组（蛋白）
+HBOND_TARGET_GROUP="Ligand"     # 目标组（配体，复合物专用）
+
+# 二级结构分析参数
+DSSP_CAL_GROUP="Protein"        # 计算组
+
 
 # ======================================
-# 7. 索引组参考（GROMACS默认索引组）
+# 8. 索引组参考（GROMACS默认索引组）
 # ======================================
 # Group     0 (         System) - 整个模拟体系
 # Group     1 (        Protein) - 蛋白质原子

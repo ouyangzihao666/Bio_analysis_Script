@@ -82,7 +82,6 @@ process_ligand() {
         fi
     fi
     
-    cd "$SYSTEM_DIR" || exit 1
 }
 
 # ====================== 结构合并函数 ======================
@@ -119,6 +118,19 @@ merge_topology() {
         sed -i "\$a $ligand_name              1" tmp_top.top
         mv tmp_top.top "$output_top"
         log "INFO" "拓扑合并完成，已添加配体: $ligand_name"
+    fi
+}
+
+# ====================== 加载轨迹校正函数 ======================
+source_traj_module() {
+    SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+    TRAJ_CORRECTION_MODULE="$SCRIPT_DIR/../tools/traj_correction_module.sh"
+    if [ -f "$TRAJ_CORRECTION_MODULE" ]; then
+        source "$TRAJ_CORRECTION_MODULE"
+        log "INFO" "已加载轨迹校正模块: $TRAJ_CORRECTION_MODULE"
+    else
+        log "WARNING" "未找到轨迹校正模块: $TRAJ_CORRECTION_MODULE ，跳过轨迹校正"
+        PERFORM_TRAJ_CORRECTION="false"
     fi
 }
 
@@ -183,15 +195,7 @@ MDP_DIR=$(realpath "$MDP_DIR")
 if [ ! -d "$MDP_DIR" ]; then log "ERROR" "MDP目录不存在: $MDP_DIR"; exit 1; fi
 
 # 8. 加载轨迹校正模块
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-TRAJ_CORRECTION_MODULE="$SCRIPT_DIR/traj_correction_module.sh"
-if [ -f "$TRAJ_CORRECTION_MODULE" ]; then
-    source "$TRAJ_CORRECTION_MODULE"
-    log "INFO" "已加载轨迹校正模块: $TRAJ_CORRECTION_MODULE"
-else
-    log "WARNING" "未找到轨迹校正模块: $TRAJ_CORRECTION_MODULE ，跳过轨迹校正"
-    PERFORM_TRAJ_CORRECTION="false"
-fi
+source_traj_module
 
 # ====================== 主流程 ======================
 mapfile -t COMPLEX_LINES < <(grep -v '^#' "$GROUP_FILE" | grep -v '^$')
@@ -204,10 +208,12 @@ for line in "${COMPLEX_LINES[@]}"; do
     IFS=',' read -ra FIELDS <<< "$line"
     PROTEIN_PDB=$(realpath "${FIELDS[0]}" | xargs)
     LIGAND_SDF=$(realpath "${FIELDS[1]}" | xargs)
-    SYSTEM_NAME=$(echo "${FIELDS[2]}" | xargs)
+    PROTEIN_NAME=$(echo "${FIELDS[2]}" | xargs)
     LIGAND_NAME=$(echo "${FIELDS[3]}" | xargs)
 
-    log "INFO" "===== 处理体系: ${SYSTEM_NAME}_${LIGAND_NAME} ====="
+    SYSTEM_NAME="${SYSTEM_NAME}_${LIGAND_NAME}"
+
+    log "INFO" "===== 处理体系: ${SYSTEM_NAME} ====="
     log "INFO" "蛋白文件: $PROTEIN_PDB"
     log "INFO" "配体文件: $LIGAND_SDF"
 
@@ -216,7 +222,7 @@ for line in "${COMPLEX_LINES[@]}"; do
         exit 1
     fi
 
-    SYSTEM_DIR="${WORK_DIR}/${SYSTEM_NAME}_${LIGAND_NAME}"
+    SYSTEM_DIR="${WORK_DIR}/${SYSTEM_NAME}"
     mkdir -p "$SYSTEM_DIR"
     cd "$SYSTEM_DIR" || exit 1
 
@@ -225,9 +231,9 @@ for line in "${COMPLEX_LINES[@]}"; do
     mkdir -p "$STEP_DIR"
     cd "$STEP_DIR" || exit 1
 
-    PROTEIN_CLEAN="${SYSTEM_NAME}_clean.pdb"
-    PROTEIN_GRO="${SYSTEM_NAME}_processed.gro"
-    PROTEIN_TOP="${SYSTEM_NAME}_topol.top"
+    PROTEIN_CLEAN="${PROTEIN_NAME}_clean.pdb"
+    PROTEIN_GRO="${PROTEIN_NAME}_processed.gro"
+    PROTEIN_TOP="${PROTEIN_NAME}_topol.top"
 
     if ! check_and_skip "$PROTEIN_GRO" "蛋白预处理"; then
         run_gmx "grep -v HOH '$PROTEIN_PDB' > '$PROTEIN_CLEAN'" \
@@ -240,6 +246,7 @@ for line in "${COMPLEX_LINES[@]}"; do
     # ====================== 步骤2：配体预处理 ======================
     STEP_DIR="02_ligand_prep"
     process_ligand "$LIGAND_SDF" "$LIGAND_NAME" "$STEP_DIR"
+    cd "$SYSTEM_DIR" || exit 1
 
     # ====================== 步骤3：蛋白-配体合并 ======================
     
@@ -247,8 +254,8 @@ for line in "${COMPLEX_LINES[@]}"; do
     mkdir -p "$STEP_DIR"
     cd "$STEP_DIR" || exit 1
 
-    COMPLEX_GRO="${SYSTEM_NAME}_${LIGAND_NAME}_complex.gro"
-    COMPLEX_TOP="${SYSTEM_NAME}_${LIGAND_NAME}_complex.top"
+    COMPLEX_GRO="${SYSTEM_NAME}_complex.gro"
+    COMPLEX_TOP="${SYSTEM_NAME}_complex.top"
 
     # 明确定义所有文件的绝对路径
     ABS_PROTEIN_GRO="${SYSTEM_DIR}/01_protein_prep/${PROTEIN_GRO}"
@@ -436,7 +443,7 @@ for line in "${COMPLEX_LINES[@]}"; do
     fi
     # ====================================================================
 
-    log "INFO" "===== 体系 ${SYSTEM_NAME}_${LIGAND_NAME} 处理完成 ====="
+    log "INFO" "===== 体系 ${SYSTEM_NAME} 处理完成 ====="
     cd "$USER_CWD" || exit 1
 done
 

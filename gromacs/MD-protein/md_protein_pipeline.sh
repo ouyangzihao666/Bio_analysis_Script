@@ -113,7 +113,7 @@ parse_arguments() {
 # 加载轨迹校正函数
 source_traj_module() {
     SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-    TRAJ_CORRECTION_MODULE="$SCRIPT_DIR/../MD-complex/traj_correction_module.sh"
+    TRAJ_CORRECTION_MODULE="$SCRIPT_DIR/../tools/traj_correction_module.sh"
     if [ -f "$TRAJ_CORRECTION_MODULE" ]; then
         source "$TRAJ_CORRECTION_MODULE"
         log "INFO" "已加载轨迹校正模块: $TRAJ_CORRECTION_MODULE"
@@ -565,8 +565,8 @@ for protein in "${PROTEINS[@]}"; do
 
         perform_traj_correction \
             "../08_md_production/${MD_TPR}" \
-            "../08_md_production/${MD_GRO}" \
             "../08_md_production/${MD_XTC}" \
+            "../08_md_production/${MD_GRO}" \
             "${protein_name}_md" \
             "$CENTER_GROUP" \
             "$OUTPUT_GROUP" \
