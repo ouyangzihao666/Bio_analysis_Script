@@ -211,7 +211,7 @@ for line in "${COMPLEX_LINES[@]}"; do
     PROTEIN_NAME=$(echo "${FIELDS[2]}" | xargs)
     LIGAND_NAME=$(echo "${FIELDS[3]}" | xargs)
 
-    SYSTEM_NAME="${SYSTEM_NAME}_${LIGAND_NAME}"
+    SYSTEM_NAME="${PROTEIN_NAME}_${LIGAND_NAME}"
 
     log "INFO" "===== 处理体系: ${SYSTEM_NAME} ====="
     log "INFO" "蛋白文件: $PROTEIN_PDB"
@@ -376,9 +376,11 @@ for line in "${COMPLEX_LINES[@]}"; do
     cd "$STEP_DIR" || exit 1
     NVT_TPR="${SYSTEM_NAME}_nvt.tpr"
     NVT_GRO="${SYSTEM_NAME}_nvt.gro"
-    if ! check_and_skip "$NVT_GRO" "NVT平衡"; then
+    if ! check_and_skip "$NVT_TPR" "NVT平衡"; then
         run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/nvt.mdp' -c '../07_energy_minimization/$EM_GRO' -r '../07_energy_minimization/$EM_GRO' -p '../03_complex_merge/$COMPLEX_TOP' -o '$NVT_TPR'" \
                 "$NVT_TPR" "grompp NVT准备"
+        fi
+    if ! check_and_skip "$NVT_GRO" "NVT平衡"; then
         NVT_CMD="gmx mdrun -deffnm '${SYSTEM_NAME}_nvt' -s '$NVT_TPR'"
         [ "$EQUIL_VERBOSE" = "true" ] && NVT_CMD="$NVT_CMD -v"
         [ -n "${NUM_THREADS:-}" ] && NVT_CMD="$NVT_CMD -nt $NUM_THREADS"
@@ -395,9 +397,11 @@ for line in "${COMPLEX_LINES[@]}"; do
     NPT_TPR="${SYSTEM_NAME}_npt.tpr"
     NPT_GRO="${SYSTEM_NAME}_npt.gro"
     NPT_CPT="${SYSTEM_NAME}_npt.cpt"
-    if ! check_and_skip "$NPT_GRO" "NPT平衡"; then
+    if ! check_and_skip "$NPT_TPR" "NPT平衡"; then
         run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/npt.mdp' -c '../08_nvt_equilibration/$NVT_GRO' -r '../08_nvt_equilibration/$NVT_GRO' -t '../08_nvt_equilibration/${SYSTEM_NAME}_nvt.cpt' -p '../03_complex_merge/$COMPLEX_TOP' -o '$NPT_TPR'" \
                 "$NPT_TPR" "grompp NPT准备"
+        fi
+    if ! check_and_skip "$NPT_GRO" "NPT平衡"; then
         NPT_CMD="gmx mdrun -deffnm '${SYSTEM_NAME}_npt' -s '$NPT_TPR'"
         [ "$EQUIL_VERBOSE" = "true" ] && NPT_CMD="$NPT_CMD -v"
         [ -n "${NUM_THREADS:-}" ] && NPT_CMD="$NPT_CMD -nt $NUM_THREADS"
@@ -413,9 +417,11 @@ for line in "${COMPLEX_LINES[@]}"; do
     cd "$STEP_DIR" || exit 1
     MD_TPR="${SYSTEM_NAME}_md.tpr"
     MD_GRO="${SYSTEM_NAME}_md.gro"
-    if ! check_and_skip "$MD_GRO" "MD生产模拟"; then
+    if ! check_and_skip "$MD_TPR" "grompp MD准备"; then
         run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/md.mdp' -c '../09_npt_equilibration/$NPT_GRO' -t '../09_npt_equilibration/$NPT_CPT' -p '../03_complex_merge/$COMPLEX_TOP' -o '$MD_TPR'" \
                 "$MD_TPR" "grompp MD准备"
+        fi
+    if ! check_and_skip "$MD_GRO" "MD生产模拟"; then
         MD_CMD="gmx mdrun -deffnm '${SYSTEM_NAME}_md' -s '$MD_TPR'"
         [ -n "${NUM_THREADS:-}" ] && MD_CMD="$MD_CMD -nt $NUM_THREADS"
         [ -n "${GPU_ID:-}" ] && MD_CMD="$MD_CMD -gpu_id $GPU_ID"

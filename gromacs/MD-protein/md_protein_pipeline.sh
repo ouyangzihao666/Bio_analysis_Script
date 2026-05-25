@@ -490,10 +490,12 @@ for protein in "${PROTEINS[@]}"; do
     NVT_GRO="${protein_name}_nvt.gro"
     NVT_CPT="${protein_name}_nvt.cpt"
     
-    if ! check_and_skip "$NVT_GRO" "NVT平衡"; then
+    if ! check_and_skip "$NVT_TPR" "grompp NVT准备"; then
         run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/nvt.mdp' -c '../05_energy_minimization/$EM_GRO' -r '../05_energy_minimization/$EM_GRO' -p '../01_preparation/$TOPOL_FILE' -o '$NVT_TPR'" \
                 "$NVT_TPR" "grompp NVT准备"
-        
+        fi
+    
+    if ! check_and_skip "$NVT_GRO" "NVT平衡"; then
         NVT_CMD="gmx mdrun -deffnm '${protein_name}_nvt' -s '$NVT_TPR'"
 
         [ "$EQUIL_VERBOSE" = "true" ] && NVT_CMD="$NVT_CMD -v"
@@ -513,10 +515,12 @@ for protein in "${PROTEINS[@]}"; do
     NPT_GRO="${protein_name}_npt.gro"
     NPT_CPT="${protein_name}_npt.cpt"
     
-    if ! check_and_skip "$NPT_GRO" "NPT平衡"; then
+    if ! check_and_skip "$NPT_TPR" "grompp NPT准备"; then
         run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/npt.mdp' -c '../06_nvt_equilibration/$NVT_GRO' -r '../06_nvt_equilibration/$NVT_GRO' -t '../06_nvt_equilibration/$NVT_CPT' -p '../01_preparation/$TOPOL_FILE' -o '$NPT_TPR'" \
                 "$NPT_TPR" "grompp NPT准备"
-        
+        fi
+    
+    if ! check_and_skip "$NPT_GRO" "NPT平衡"; then
         NPT_CMD="gmx mdrun -deffnm '${protein_name}_npt' -s '$NPT_TPR'"
         
         [ "$EQUIL_VERBOSE" = "true" ] && NPT_CMD="$NPT_CMD -v"
@@ -536,10 +540,12 @@ for protein in "${PROTEINS[@]}"; do
     MD_GRO="${protein_name}_md.gro"
     MD_XTC="${protein_name}_md.xtc"
     
-    if ! check_and_skip "$MD_GRO" "MD模拟"; then
+    if ! check_and_skip "$MD_TPR" "grompp MD准备"; then
         run_gmx "gmx grompp -maxwarn '$MAXWARN' -f '${MDP_DIR}/md.mdp' -c '../07_npt_equilibration/$NPT_GRO' -t '../07_npt_equilibration/$NPT_CPT' -p '../01_preparation/$TOPOL_FILE' -o '$MD_TPR'" \
                 "$MD_TPR" "grompp MD准备"
-        
+        fi
+    
+    if ! check_and_skip "$MD_GRO" "MD模拟"; then
         MD_CMD="gmx mdrun -deffnm '${protein_name}_md' -s '$MD_TPR'"
         
         [ -n "${NUM_THREADS:-}" ] && MD_CMD="$MD_CMD -nt $NUM_THREADS"
