@@ -428,6 +428,7 @@ for line in "${COMPLEX_LINES[@]}"; do
         [ -n "${EXTRA_ARGS:-}" ] && MD_CMD="$MD_CMD $EXTRA_ARGS"
         run_gmx "$MD_CMD" "$MD_GRO" "MD生产模拟"
     fi
+    cd "$SYSTEM_DIR" || exit 1
 
         # ====================== 步骤11：轨迹周期性校正 ======================
     if [ "$PERFORM_TRAJ_CORRECTION" = "true" ] && declare -f perform_traj_correction &> /dev/null; then
@@ -445,8 +446,9 @@ for line in "${COMPLEX_LINES[@]}"; do
             "$TRAJ_CORRECTION_METHOD" \
             "$SKIP_EXISTING"
 
-        cd "$SYSTEM_DIR" || exit 1
     fi
+    cd "$SYSTEM_DIR" || exit 1
+    
     # ====================================================================
 
     log "INFO" "===== 体系 ${SYSTEM_NAME} 处理完成 ====="

@@ -202,7 +202,7 @@ case "$ANALYSIS_TYPE" in
             input_gro="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$GRO_SUFFIX.gro"
             output_pdb="${PROTEIN_NAME}_md_corrected.pdb"
             
-            export_pdb "$input_tpr" "$input_gro" "$output_pdb"
+            export_pdb "$input_tpr" "$input_gro" "$output_pdb" "$OUT_GROUP"
         done
         cd ..
         ;;

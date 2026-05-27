@@ -394,7 +394,7 @@ for protein in "${PROTEINS[@]}"; do
     fi
 
     # 1.2 自动去除水分子（HOH）
-    if ! check_and_skip "$CLEAN_PDB" "去除水分子"; then
+    if [ [ false ] -a [ ! check_and_skip "$CLEAN_PDB" "去除水分子" ]]; then
         run_gmx "grep -v HOH $PROPKA_PDB > $CLEAN_PDB" \
                 "$CLEAN_PDB" "去除水分子"
     else

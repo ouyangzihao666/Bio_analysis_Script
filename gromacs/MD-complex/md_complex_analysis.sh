@@ -206,7 +206,7 @@ case "$ANALYSIS_TYPE" in
             input_gro="$WORK_DIR/$SYSTEM_NAME/$TRAJ_CORRECTION_DIR/$SYSTEM_NAME$GRO_SUFFIX.gro"
             output_pdb="${SYSTEM_NAME}_md_corrected.pdb"
             
-            export_pdb "$input_tpr" "$input_gro" "$output_pdb"
+            export_pdb "$input_tpr" "$input_gro" "$output_pdb" "$OUT_GROUP"
         done
         cd ..
         ;;

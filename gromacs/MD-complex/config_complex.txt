@@ -115,6 +115,9 @@ HBOND_TARGET_GROUP="Ligand"     # 目标组（配体，复合物专用）
 # 二级结构分析参数
 DSSP_CAL_GROUP="Protein"        # 计算组
 
+# PDB文件导出参数
+OUT_GROUP="System"              # 导出的组索引
+
 
 # ======================================
 # 8. 索引组参考（GROMACS默认索引组）

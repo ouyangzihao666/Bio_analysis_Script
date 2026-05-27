@@ -114,9 +114,10 @@ export_pdb() {
     local input_tpr="$1"
     local input_gro="$2"
     local output_file="$3"
+    local output_group="$4"
     
     if ! check_and_skip "$output_file" "pdb文件导出"; then
-        run_gmx "gmx trjconv -s '$input_tpr' -f '$input_gro' -o '$output_file'" \
+        run_gmx "echo '$output_group' | gmx trjconv -s '$input_tpr' -f '$input_gro' -o '$output_file'" \
                 "$output_file" "pdb文件导出"
     fi
 }
