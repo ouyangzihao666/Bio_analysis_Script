@@ -51,6 +51,7 @@ TRAJ_SUFFIX="${TRAJ_SUFFIX:-_md_corrected}"
 GRO_SUFFIX="${GRO_SUFFIX:-_md_corrected}"
 MD_PRODUCTION_DIR="${MD_PRODUCTION_DIR:-08_md_production}"
 TRAJ_CORRECTION_DIR="${TRAJ_CORRECTION_DIR:-09_traj_correction}"
+OUT_GROUP="${OUT_GROUP:-System}"
 
 # ====================== 必要参数检查 ======================
 check_required_param() {
@@ -196,10 +197,10 @@ case "$ANALYSIS_TYPE" in
         mkdir -p "$ANALYSIS_DIR"
         cd "$ANALYSIS_DIR" || exit 1
         
-        for SYSTEM_NAME in "${COMPLEXES[@]}"; do
-            echo "===== 导出复合物: $SYSTEM_NAME ====="
+        for PROTEIN_NAME in "${PROTEINS[@]}"; do
+            echo "===== 导出pdb: $PROTEIN_NAME ====="
             input_tpr="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$TPR_SUFFIX.tpr"
-            input_gro="$WORK_DIR/$PROTEIN_NAME/$MD_PRODUCTION_DIR/$PROTEIN_NAME$GRO_SUFFIX.gro"
+            input_gro="$WORK_DIR/$PROTEIN_NAME/$TRAJ_CORRECTION_DIR/$PROTEIN_NAME$GRO_SUFFIX.gro"
             output_pdb="${PROTEIN_NAME}_md_corrected.pdb"
             
             export_pdb "$input_tpr" "$input_gro" "$output_pdb" "$OUT_GROUP"

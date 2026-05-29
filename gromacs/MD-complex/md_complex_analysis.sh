@@ -51,6 +51,7 @@ TRAJ_SUFFIX="${TRAJ_SUFFIX:-_md_corrected}"
 GRO_SUFFIX="${GRO_SUFFIX:-_md_corrected}"
 MD_PRODUCTION_DIR="${MD_PRODUCTION_DIR:-10_md_production}"
 TRAJ_CORRECTION_DIR="${TRAJ_CORRECTION_DIR:-11_traj_correction}"
+OUT_GROUP="${OUT_GROUP:-System}"
 
 # ====================== 必要参数检查 ======================
 check_required_param() {
