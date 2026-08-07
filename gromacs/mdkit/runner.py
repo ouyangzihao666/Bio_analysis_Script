@@ -108,7 +108,7 @@ class Runner:
         for spec in self.workflow.steps:
             st = sys_entry.get("steps", {}).get(spec.name, {})
             for logical, rec in (st.get("outputs") or {}).items():
-                if os.path.isfile(rec.get("path", "")):
+                if os.path.exists(rec.get("path", "")):
                     registry.set(logical, rec["path"], producer=spec.name)
         return registry
 
@@ -227,7 +227,7 @@ class Runner:
                     continue
                 # Rebuild registry from this step's recorded outputs.
                 for logical, rec in (st.get("outputs") or {}).items():
-                    if os.path.isfile(rec.get("path", "")):
+                    if os.path.exists(rec.get("path", "")):
                         registry.set(logical, rec["path"], producer=spec.name)
 
     # ------------------------------------------------------------------
@@ -319,10 +319,17 @@ class Runner:
                 final = tx.commit(outputs_map, optional_map)
                 out_records = {}
                 for logical, path in final.items():
-                    out_records[logical] = {
-                        "path": path,
-                        "sha256": sha256_file(path),
-                    }
+                    if os.path.isdir(path):
+                        out_records[logical] = {
+                            "path": path,
+                            "sha256": None,
+                            "dir": True,
+                        }
+                    else:
+                        out_records[logical] = {
+                            "path": path,
+                            "sha256": sha256_file(path),
+                        }
                     registry.set(logical, path, producer=spec.name)
                 st["status"] = "done"
                 st["signature"] = signature
@@ -393,7 +400,7 @@ class Runner:
         outputs = st.get("outputs") or {}
         if not outputs:
             return st.get("status") == "done"
-        return all(os.path.isfile(rec.get("path", "")) for rec in outputs.values())
+        return all(os.path.exists(rec.get("path", "")) for rec in outputs.values())
 
     def _builtin_mdp_dir(self) -> str:
         here = os.path.dirname(os.path.abspath(__file__))
@@ -537,8 +544,11 @@ def cmd_clean(
                         removed.append(d + "/（待确认）")
                     continue
             for p in paths:
-                if p and os.path.isfile(p) and _under(run_dir, p):
-                    if yes:
+                if p and os.path.exists(p) and _under(run_dir, p):
+                    if yes and os.path.isdir(p):
+                        shutil.rmtree(p)
+                        removed.append(p + "/")
+                    elif yes:
                         os.remove(p)
                         removed.append(p)
                     else:

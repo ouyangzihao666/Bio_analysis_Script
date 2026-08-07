@@ -38,7 +38,7 @@ class Transaction:
         missing = []
         for logical, rel in outputs.items():
             src = os.path.join(self.stage_dir, rel)
-            if not os.path.isfile(src):
+            if not os.path.exists(src):
                 if optional.get(logical):
                     continue
                 missing.append("%s (%s)" % (logical, rel))
@@ -54,7 +54,10 @@ class Transaction:
                 continue
             src = os.path.join(self.stage_dir, rel)
             dst = os.path.join(self.step_dir, rel)
-            os.replace(src, dst)
+            if os.path.isdir(src):
+                shutil.move(src, dst)
+            else:
+                os.replace(src, dst)
         shutil.rmtree(self.stage_dir, ignore_errors=True)
         return final
 

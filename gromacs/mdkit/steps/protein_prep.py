@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import glob
 
 from mdkit import gro
 from mdkit.steps.base import Step
@@ -10,7 +11,7 @@ from mdkit.steps.base import Step
 
 class ProteinPrepStep(Step):
     name = "protein_prep"
-    version = "1.0"
+    version = "1.1"
     description = "pdb2gmx 生成蛋白结构与拓扑（支持多链多聚体合并）"
     inputs = []
     outputs = [
@@ -88,6 +89,10 @@ class ProteinPrepStep(Step):
         ctx.run_gmx(args, stdin_text="0\n")
         if os.path.isfile(ctx.path("posre.itp")):
             ctx.register_output("posre_itp", "posre.itp")
+        for ff_dir in sorted(glob.glob(ctx.path("*.ff"))):
+            name = os.path.basename(ff_dir.rstrip(os.sep))
+            if os.path.isdir(ff_dir):
+                ctx.register_output("ff_dir_%s" % name, name)
         ctx.log.info("蛋白预处理完成: %s", processed)
 
 
