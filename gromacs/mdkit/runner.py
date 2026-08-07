@@ -235,6 +235,8 @@ class Runner:
         sys_entry = data["systems"][system.name]
         sys_entry["status"] = "running"
         self.log.info("===== 处理体系: %s =====", system.name)
+        for note in getattr(system, "review_notes", []):
+            self.log.warning("[%s] ⚠ %s", system.name, note)
         registry = self._registry(system, data)
         start_index = 0
         if self.from_step:

@@ -148,8 +148,14 @@ def build_index(
     return natoms
 
 
-def merge_pdb_chains(chain_paths: List[str], out_path: str, remove_water: bool = True) -> int:
+def merge_pdb_chains(
+    chain_paths: List[str],
+    out_path: str,
+    remove_water: bool = True,
+    remove_residues: Optional[List[str]] = None,
+) -> int:
     """Concatenate PDB chains into one multi-chain PDB for pdb2gmx."""
+    remove_residues = {r.upper() for r in (remove_residues or [])}
     out_atoms = []
     chains = []
     for path in chain_paths:
@@ -162,6 +168,8 @@ def merge_pdb_chains(chain_paths: List[str], out_path: str, remove_water: bool =
                     continue
                 resname = line[17:20].strip().upper()
                 if remove_water and resname in WATER_RES:
+                    continue
+                if resname in remove_residues:
                     continue
                 chain_atoms.append(_parse_pdb_atom(line))
         if not chain_atoms:
@@ -198,6 +206,46 @@ def merge_pdb_chains(chain_paths: List[str], out_path: str, remove_water: bool =
             fh.write("TER\n")
         fh.write("END\n")
     return atom_no
+
+
+def extract_pdb_residue(
+    pdb_path: str,
+    resname: str,
+    out_path: str,
+    ligand_name: Optional[str] = None,
+) -> int:
+    """Extract all atoms of one PDB residue into a single-ligand PDB."""
+    atoms = []
+    with open(pdb_path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith(("ATOM", "HETATM")) and line[17:20].strip().upper() == resname.upper():
+                atoms.append(_parse_pdb_atom(line))
+    if not atoms:
+        raise ConfigError(
+            "PDB 中未找到残基 %s 的原子: %s" % (resname, pdb_path)
+        )
+    out_resname = (ligand_name or resname)[:3]
+    with open(out_path, "w", encoding="utf-8") as fh:
+        for i, a in enumerate(atoms, 1):
+            fh.write(
+                "HETATM%5d %-4s%1s%3s %1s%4d%1s   %8.3f%8.3f%8.3f%6.2f%6.2f\n"
+                % (
+                    i,
+                    a["name"][:4],
+                    a.get("altloc", " "),
+                    out_resname,
+                    " ",
+                    1,
+                    a.get("icode", " "),
+                    a["x"],
+                    a["y"],
+                    a["z"],
+                    a.get("occ", 1.0),
+                    a.get("bfac", 0.0),
+                )
+            )
+        fh.write("END\n")
+    return len(atoms)
 
 
 def _parse_pdb_atom(line: str) -> Dict:

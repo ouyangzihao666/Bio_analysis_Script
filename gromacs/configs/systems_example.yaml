@@ -59,3 +59,22 @@ systems:
         itp_file: inputs/MOL.itp
         gro_file: inputs/MOL.gro
         charge: 0
+
+  # 双分子 mol2 自动拆分（不同配体，可指定拆分后名称）
+  - name: complex_mol2_multi
+    protein:
+      file: inputs/protein_E.pdb
+    ligands:
+      - file: inputs/FDME-BDO.mol2
+        names: [FDME, BDO]
+        charge: 0
+
+  # 配体已在蛋白 PDB 内（HETATM 残基 UNK），自动提取并按残基名清洗蛋白
+  - name: complex_pdb_ligand
+    protein:
+      file: inputs/5xjh-BHET.pdb
+    ligands:
+      - name: BHET
+        file: inputs/5xjh-BHET.pdb
+        residue: UNK
+        charge: 0

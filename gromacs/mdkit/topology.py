@@ -11,6 +11,7 @@ from mdkit.exceptions import ConfigError
 
 _INCLUDE_QUOTED = re.compile(r'^#include\s+"([^"]+)"\s*$')
 _MOLECULES_HEADER = re.compile(r"^\s*\[\s*molecules\s*\]\s*$")
+_MOLECULETYPE_HEADER = re.compile(r"^\s*\[\s*moleculetype\s*\]\s*$")
 
 
 def absolutize_includes(src_top: str, dst_top: str) -> str:
@@ -79,3 +80,44 @@ def append_molecules(top_path: str, entries: List[Tuple[str, int]]) -> None:
     lines[insert_at:insert_at] = new_lines
     with open(top_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
+
+
+def rename_molecule(itp_path: str, gro_path: str, new_name: str) -> None:
+    """Rename the molecule in an acpype-style itp and its matching gro.
+
+    Ensures [molecules] entries in the complex topology match the
+    moleculetype name in the itp and the residue name in the gro.
+    """
+    with open(itp_path, "r", encoding="utf-8", errors="replace") as fh:
+        lines = fh.read().splitlines()
+    renamed = False
+    for i, line in enumerate(lines):
+        if _MOLECULETYPE_HEADER.match(line):
+            j = i + 1
+            while j < len(lines) and (
+                not lines[j].strip() or lines[j].strip().startswith(";")
+            ):
+                j += 1
+            if j < len(lines):
+                fields = lines[j].split()
+                if fields:
+                    lines[j] = new_name + lines[j][len(fields[0]):]
+                    renamed = True
+            break
+    if not renamed:
+        raise ConfigError("itp 中未找到 [ moleculetype ] 名称: %s" % itp_path)
+    with open(itp_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    # Rewrite the residue name column in the gro (cols 5..9).
+    with open(gro_path, "r", encoding="utf-8", errors="replace") as fh:
+        gro_lines = fh.read().splitlines()
+    if len(gro_lines) >= 3:
+        try:
+            natoms = int(gro_lines[1].strip())
+        except ValueError:
+            natoms = 0
+        for idx in range(2, min(2 + natoms, len(gro_lines))):
+            line = gro_lines[idx]
+            gro_lines[idx] = line[:5] + new_name.ljust(5)[:5] + line[10:]
+    with open(gro_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(gro_lines) + "\n")

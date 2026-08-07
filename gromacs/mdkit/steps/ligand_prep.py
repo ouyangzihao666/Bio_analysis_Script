@@ -6,6 +6,7 @@ import glob
 import os
 import shutil
 
+from mdkit import gro, mol2, topology
 from mdkit.exceptions import StepError
 from mdkit.steps.base import Step
 
@@ -55,10 +56,31 @@ class LigandPrepStep(Step):
         )
         shutil.copyfile(ligand.itp_file, itp)
         shutil.copyfile(ligand.gro_file, gr)
+        topology.rename_molecule(itp, gr, ligand.name)
 
     def _auto(self, ctx, ligand) -> None:
+        fmt = ligand.resolved_format()
+        if ligand.residue is not None:
+            extracted = ctx.path("%s_lig.pdb" % ligand.name)
+            n = gro.extract_pdb_residue(
+                ligand.file, ligand.residue, extracted, ligand.name
+            )
+            ctx.log.info(
+                "已从 PDB 提取配体 %s（残基 %s，%d 原子）",
+                ligand.name,
+                ligand.residue,
+                n,
+            )
+            src = extracted
+            fmt = "pdb"
+        else:
+            src = ctx.registry.get("ligand_sdf:%s" % ligand.name) or ligand.file
+            if fmt == "mol2" and ligand.source_mol_index is not None:
+                split_mol2 = ctx.path("%s_src.mol2" % ligand.name)
+                mol2.extract_molecule(src, split_mol2, ligand.source_mol_index)
+                src = split_mol2
         sdf_h = ctx.path("%s_H.sdf" % ligand.name)
-        mol2 = ctx.path("%s.mol2" % ligand.name)
+        mol2_out = ctx.path("%s.mol2" % ligand.name)
         itp = ctx.register_output(
             "ligand_itp:%s" % ligand.name, "%s_GMX.itp" % ligand.name
         )
@@ -69,8 +91,8 @@ class LigandPrepStep(Step):
             [
                 "obabel",
                 "-i",
-                "sdf",
-                ligand.file,
+                fmt,
+                src,
                 "-o",
                 "sdf",
                 "-O",
@@ -86,7 +108,7 @@ class LigandPrepStep(Step):
                 "-fi",
                 "sdf",
                 "-o",
-                mol2,
+                mol2_out,
                 "-fo",
                 "mol2",
                 "-at",
@@ -99,7 +121,7 @@ class LigandPrepStep(Step):
                 str(int(ligand.charge)),
             ]
         )
-        ctx.run_cmd(["acpype", "-i", mol2])
+        ctx.run_cmd(["acpype", "-i", mol2_out])
         candidates = sorted(glob.glob(ctx.path("%s*.acpype" % ligand.name)))
         if not candidates:
             raise StepError(
@@ -114,6 +136,11 @@ class LigandPrepStep(Step):
             )
         shutil.copyfile(src_itp, itp)
         shutil.copyfile(src_gro, gr)
+        topology.rename_molecule(itp, gr, ligand.name)
         ctx.remove_temp("%s.acpype" % os.path.basename(acpype_dir.rstrip("/")))
         ctx.remove_temp("%s_H.sdf" % ligand.name)
         ctx.remove_temp("%s.mol2" % ligand.name)
+        if ligand.source_mol_index is not None:
+            ctx.remove_temp("%s_src.mol2" % ligand.name)
+        if ligand.residue is not None:
+            ctx.remove_temp("%s_lig.pdb" % ligand.name)

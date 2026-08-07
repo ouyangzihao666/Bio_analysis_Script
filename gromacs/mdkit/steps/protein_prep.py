@@ -38,18 +38,24 @@ class ProteinPrepStep(Step):
     def run(self, ctx) -> None:
         system = ctx.system
         protein = system.protein
+        ligand_resnames = [
+            l.residue for l in system.ligands if l.residue is not None
+        ]
         if len(protein.chains) > 1:
             merged = ctx.path("%s_merged.pdb" % system.name)
             n = gro.merge_pdb_chains(
-                protein.chains, merged, remove_water=ctx.params["remove_water"]
+                protein.chains,
+                merged,
+                remove_water=ctx.params["remove_water"],
+                remove_residues=ligand_resnames,
             )
             ctx.log.info("多链合并完成，共 %d 个原子 -> %s", n, merged)
             source_pdb = merged
         else:
             source_pdb = protein.chains[0]
-            if ctx.params["remove_water"]:
+            if ctx.params["remove_water"] or ligand_resnames:
                 clean = ctx.path("%s_clean.pdb" % system.name)
-                _strip_water(source_pdb, clean)
+                _strip_pdb(source_pdb, clean, ligand_resnames)
                 source_pdb = clean
 
         if ctx.params.get("ph") is not None:
@@ -85,13 +91,14 @@ class ProteinPrepStep(Step):
         ctx.log.info("蛋白预处理完成: %s", processed)
 
 
-def _strip_water(src: str, dst: str) -> None:
+def _strip_pdb(src: str, dst: str, extra_resnames) -> None:
+    extra = {r.upper() for r in extra_resnames}
     with open(src, "r", encoding="utf-8", errors="replace") as fh_in, open(
         dst, "w", encoding="utf-8"
     ) as fh_out:
         for line in fh_in:
             if line.startswith(("ATOM", "HETATM")):
                 resname = line[17:20].strip().upper()
-                if resname in gro.WATER_RES:
+                if resname in gro.WATER_RES or resname in extra:
                     continue
             fh_out.write(line)

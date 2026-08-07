@@ -164,11 +164,16 @@ def cmd_plan(args, log) -> int:
                 }
             steps_out.append(rec)
         result["systems"].append({"name": system.name, "steps": steps_out})
+        result["systems"][-1]["review_notes"] = getattr(
+            system, "review_notes", []
+        )
     if args.json:
         emit(result, True)
     else:
         for sys_rec in result["systems"]:
             print("===== 体系: %s =====" % sys_rec["name"])
+            for note in sys_rec.get("review_notes", []):
+                print("  ⚠ %s" % note)
             for st in sys_rec["steps"]:
                 print("  %-16s -> %s" % (st["step"], st["dir"]))
                 if "mdp" in st:

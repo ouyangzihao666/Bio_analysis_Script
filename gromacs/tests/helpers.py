@@ -14,13 +14,19 @@ def touch(p):
     if p:
         open(p, "w").close()
 
-GRO = (
-    "fake gmx\n"
-    "    2\n"
-    "    1PROT     N    1   1.000   1.000   1.000\n"
-    "    1PROT    CA    2   1.001   1.001   1.001\n"
-    "   2.000   2.000   2.000\n"
-)
+def gro_lines(natoms, resname, start_no=1, first=1):
+    lines = ["fake gmx", str(natoms)]
+    for i in range(natoms):
+        no = first + i
+        lines.append(
+            "%5d%-5s%5s%5d%8.3f%8.3f%8.3f"
+            % (1, resname, ("A%d" % no)[:5], no, 1.0, 1.0, 1.0)
+        )
+    lines.append("   2.000   2.000   2.000")
+    return "\n".join(lines) + "\n"
+
+PROTEIN_GRO = gro_lines(8, "PROT")
+SYSTEM_GRO = gro_lines(20, "SOL")
 TOP = '#include "forcefield.itp"\n\n[ molecules ]\nProtein 1\n'
 
 args = sys.argv[1:]
@@ -42,16 +48,20 @@ def val(key):
     return None
 
 if sub == "pdb2gmx":
-    open(val("-o"), "w").write(GRO)
+    open(val("-o"), "w").write(PROTEIN_GRO)
     open(val("-p"), "w").write(TOP)
 elif sub in ("editconf", "trjconv", "rms", "rmsf", "gyrate", "hbond", "dssp"):
-    touch(val("-o"))
+    src = val("-f") or val("-cp")
+    if val("-o") and src and os.path.isfile(src):
+        open(val("-o"), "w").write(open(src).read())
+    else:
+        touch(val("-o"))
 elif sub == "solvate":
     src = val("-cp")
     if src and os.path.isfile(src):
         open(val("-o"), "w").write(open(src).read())
     else:
-        touch(val("-o"))
+        open(val("-o"), "w").write(SYSTEM_GRO)
     top = val("-p")
     if top:
         with open(top, "a") as fh:
@@ -59,7 +69,7 @@ elif sub == "solvate":
 elif sub == "grompp":
     touch(val("-o"))
 elif sub == "genion":
-    open(val("-o"), "w").write(GRO)
+    open(val("-o"), "w").write(SYSTEM_GRO)
     top = val("-p")
     if top:
         with open(top, "a") as fh:
@@ -71,7 +81,40 @@ elif sub == "mdrun":
         sys.exit(7)
     if name:
         for ext in ("gro", "edr", "log", "cpt", "xtc"):
-            open(name + "." + ext, "w").write(GRO if ext == "gro" else "x")
+            open(name + "." + ext, "w").write(SYSTEM_GRO if ext == "gro" else "x")
+sys.exit(0)
+'''
+
+
+FAKE_LIGAND_TOOLS = r'''#!/usr/bin/env python3
+import os, sys
+
+def val(key):
+    for i, a in enumerate(sys.argv):
+        if a == key and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return None
+
+tool = os.path.basename(sys.argv[0])
+if tool == "obabel":
+    out = val("-O")
+    if out:
+        open(out, "w").write("obabel fake\n")
+elif tool == "antechamber":
+    out = val("-o")
+    if out:
+        open(out, "w").write("antechamber fake\n")
+elif tool == "acpype":
+    inp = val("-i")
+    if not inp:
+        sys.exit(1)
+    stem = os.path.splitext(os.path.basename(inp))[0]
+    d = stem + ".acpype"
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, stem + "_GMX.itp"), "w") as fh:
+        fh.write("[ moleculetype ]\n; name  nrexcl\nLIG 3\n")
+    with open(os.path.join(d, stem + "_GMX.gro"), "w") as fh:
+        fh.write("lig\n    1\n    1LIG      C    1   1.000   1.000   1.000\n   2.000   2.000   2.000\n")
 sys.exit(0)
 '''
 
@@ -83,6 +126,17 @@ def make_fake_gmx() -> str:
     with open(path, "w") as fh:
         fh.write(FAKE_GMX)
     os.chmod(path, 0o755)
+    return d
+
+
+def make_fake_ligand_tools() -> str:
+    """Fake obabel / antechamber / acpype binaries; returns dir path."""
+    d = tempfile.mkdtemp(prefix="mdkit_fakelig_")
+    for tool in ("obabel", "antechamber", "acpype"):
+        path = os.path.join(d, tool)
+        with open(path, "w") as fh:
+            fh.write(FAKE_LIGAND_TOOLS)
+        os.chmod(path, 0o755)
     return d
 
 
@@ -112,6 +166,29 @@ TINY_LIG_GRO = """tiny ligand
     1LIG      C    1   2.100   2.100   2.100
     1LIG      H    2   2.200   2.200   2.200
    2.000   2.000   2.000
+"""
+
+MULTI_MOL2 = """# created with PyMOL
+@<TRIPOS>MOLECULE
+obj03
+13 13 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1\tO\t4.944\t-15.548\t4.027\tO.2\t1\tFME0\t0.000
+2\tC\t5.095\t-14.458\t4.825\tC.2\t1\tFME0\t0.000
+@<TRIPOS>BOND
+1\t1\t2\t1
+@<TRIPOS>MOLECULE
+obj04
+8 7 1
+SMALL
+USER_CHARGES
+@<TRIPOS>ATOM
+1\tC\t2.661\t-7.976\t3.560\tC.3\t1\tBDO0\t0.000
+2\tC\t3.059\t-6.942\t2.514\tC.3\t1\tBDO0\t0.000
+@<TRIPOS>BOND
+1\t1\t2\t1
 """
 
 

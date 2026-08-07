@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from mdkit.exceptions import ConfigError
+from mdkit import mol2 as mol2_mod
 
 
 def load_yaml(path: str) -> dict:
@@ -115,16 +116,33 @@ class Ligand:
     def __init__(self, data: dict, base_dir: str):
         if not isinstance(data, dict):
             raise ConfigError("配体条目必须是映射")
-        self.name = str(data.get("name", "")).strip()
-        _require(self.name, "配体缺少 name")
         file_raw = data.get("file")
-        _require(isinstance(file_raw, str) and file_raw, "配体 %s 缺少 file" % self.name)
+        _require(isinstance(file_raw, str) and file_raw, "配体缺少 file")
         self.file = _resolve_path(file_raw, base_dir)
+        self.name = str(data.get("name", "")).strip() or os.path.splitext(
+            os.path.basename(self.file)
+        )[0]
+        _require(self.name, "配体缺少 name（文件 %s 无法派生名称）" % self.file)
         self.charge = _to_number(data.get("charge", 0), "配体 %s charge" % self.name)
         self.count = int(data.get("count", 1))
         _require(self.count >= 1, "配体 %s count 必须 >= 1" % self.name)
         self.method = str(data.get("method", "auto"))
         _require(self.method in ("auto", "manual"), "配体 %s method 必须是 auto 或 manual" % self.name)
+        fmt = str(data.get("format", "auto"))
+        _require(fmt in ("auto", "sdf", "mol2", "pdb"), "配体 %s format 必须是 auto/sdf/mol2/pdb" % self.name)
+        self.format = fmt
+        names = data.get("names")
+        if names is not None:
+            _require(isinstance(names, list) and names, "配体 %s names 必须是列表" % self.name)
+            _require(all(isinstance(n, str) and n for n in names), "配体 %s names 必须是非空字符串" % self.name)
+        self.names = names
+        self.split = bool(data.get("split", True))
+        self.residue = data.get("residue")
+        if self.residue is not None:
+            _require(
+                isinstance(self.residue, str) and 1 <= len(self.residue) <= 3,
+                "配体 %s residue 必须是 1-3 字符的 PDB 残基名" % self.name,
+            )
         self.itp_file = _resolve_opt(data.get("itp_file"), base_dir)
         self.gro_file = _resolve_opt(data.get("gro_file"), base_dir)
         if self.method == "manual":
@@ -133,6 +151,19 @@ class Ligand:
                 "配体 %s 手动模式需要 itp_file 和 gro_file" % self.name,
             )
         self.raw = data
+        self.source_mol_index = data.get("_source_mol_index")
+
+    def resolved_format(self) -> str:
+        if self.format != "auto":
+            return self.format
+        ext = os.path.splitext(self.file)[1].lower()
+        if ext == ".mol2":
+            return "mol2"
+        if ext in (".sdf", ".sd"):
+            return "sdf"
+        if ext == ".pdb":
+            return "pdb"
+        return "sdf"
 
     def as_dict(self) -> dict:
         return {
@@ -141,6 +172,9 @@ class Ligand:
             "charge": self.charge,
             "count": self.count,
             "method": self.method,
+            "format": self.format,
+            "residue": self.residue,
+            "split": self.split,
         }
 
 
@@ -184,6 +218,16 @@ class System:
         _require(isinstance(self.overrides, dict), "体系 %s overrides 必须是映射" % self.name)
         for k, v in self.overrides.items():
             _require(isinstance(v, dict), "体系 %s overrides[%s] 必须是映射" % (self.name, k))
+        self.review_notes: List[str] = []
+        self.ligands = _expand_multi_mol2(self.ligands, base_dir, self.review_notes)
+        for ligand in self.ligands:
+            _require(
+                len(ligand.name) <= 5,
+                "配体名 %s 长度不能超过 5 字符（gro/itp 分子名一致要求）"
+                % ligand.name,
+            )
+        names = [l.name for l in self.ligands]
+        _require(len(set(names)) == len(names), "体系 %s 配体名重复" % self.name)
         self.raw = data
 
     @property
@@ -256,6 +300,60 @@ def _to_number(value, label: str):
         return float(value)
     except (TypeError, ValueError):
         raise ConfigError("%s 必须是数字: %r" % (label, value))
+
+
+def _expand_multi_mol2(ligands: List[Ligand], base_dir: str, notes: List[str]) -> List[Ligand]:
+    """Split multi-molecule mol2 files into one Ligand per molecule."""
+    expanded: List[Ligand] = []
+    for ligand in ligands:
+        if (
+            ligand.method != "auto"
+            or ligand.residue is not None
+            or not ligand.split
+            or ligand.resolved_format() != "mol2"
+        ):
+            expanded.append(ligand)
+            continue
+        try:
+            molecules = mol2_mod.parse_molecules(ligand.file)
+        except ConfigError:
+            raise
+        if len(molecules) <= 1:
+            expanded.append(ligand)
+            continue
+        if ligand.names is not None and len(ligand.names) != len(molecules):
+            raise ConfigError(
+                "配体 %s 的 names 数量（%d）与 mol2 分子数（%d）不一致"
+                % (ligand.name, len(ligand.names), len(molecules))
+            )
+        if ligand.names is not None:
+            raw_names = list(ligand.names)
+        else:
+            raw_names = [mol2_mod.molecule_name(m) for m in molecules]
+        used = {}
+        final_names = []
+        for nm in raw_names:
+            base = nm
+            k = 2
+            while base in used:
+                base = "%s_%d" % (nm, k)
+                k += 1
+            used[base] = True
+            if base != nm:
+                notes.append(
+                    "配体 %s 重名，已自动改名 %s；若实为同一配体多拷贝，"
+                    "请改用单分子 mol2 + count 或显式 names" % (nm, base)
+                )
+            final_names.append(base)
+        for i, molecule in enumerate(molecules):
+            data = dict(ligand.raw)
+            data["name"] = final_names[i]
+            data["split"] = False
+            data.pop("names", None)
+            data["_source_mol_index"] = molecule["index"]
+            new_ligand = Ligand(data, base_dir)
+            expanded.append(new_ligand)
+    return expanded
 
 
 def load_workflow(path: str) -> WorkflowConfig:

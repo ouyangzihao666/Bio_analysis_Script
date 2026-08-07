@@ -114,6 +114,20 @@ systems:
       - {name: MOL, method: manual, itp_file: inputs/MOL.itp, gro_file: inputs/MOL.gro}
 ```
 
+配体条目支持的字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `file` | 配体文件：`.sdf` / `.mol2` / `.pdb`（格式自动识别，可用 `format:` 指定） |
+| `name` | 配体名（≤5 字符）；缺省取文件名 |
+| `charge` / `count` | 净电荷 / 拷贝数 |
+| `residue` | 配体位于蛋白 PDB 内时的 HETATM 残基名（如 `UNK`）；设置后自动提取，并在 pdb2gmx 前清洗该残基 |
+| `names` | 多分子 mol2 拆分后的命名列表（长度须与分子数一致） |
+| `split` | 多分子 mol2 是否自动拆分（默认 true） |
+| `method: manual` | 使用自带 itp/gro（配合 `itp_file`/`gro_file`） |
+
+多分子 mol2（如 `FDME-BDO.mol2` 含两个 `@<TRIPOS>MOLECULE` 段）会自动按段拆分为多个配体：优先用 `names:` 命名，否则用 mol2 的子结构名；若子结构重名会自动加后缀（如 `FME_2`）并在 `plan`/运行日志中提示人工确认——同配体多拷贝建议改用单分子文件 + `count`。
+
 ## 运行控制与干预
 
 | 命令 | 作用 |
