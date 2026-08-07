@@ -71,6 +71,42 @@ class TopologyTests(unittest.TestCase):
         with open(gro, encoding="utf-8") as fh:
             self.assertIn("    1FDME", fh.read())
 
+    def test_merge_ligand_itps_dedupes_atomtypes(self):
+        itp1 = self.ws.write(
+            "l1.itp",
+            "[ atomtypes ]\n;name\n c3  c3  0.0  0.0  A  0.34  0.11\n"
+            "[ moleculetype ]\nL1 3\n[ atoms ]\n1 c3 1 L1 C1 1 0.0 12.0\n",
+        )
+        itp2 = self.ws.write(
+            "l2.itp",
+            "[ atomtypes ]\n;name\n c3  c3  0.0  0.0  A  0.34  0.11\n"
+            " oh  oh  0.0  0.0  A  0.31  0.08\n"
+            "[ moleculetype ]\nL2 3\n[ atoms ]\n1 oh 1 L2 O1 1 0.0 16.0\n",
+        )
+        out = os.path.join(self.ws.root, "merged.itp")
+        topology.merge_ligand_itps([itp1, itp2], ["L1", "L2"], out)
+        with open(out, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertEqual(content.count("[ atomtypes ]"), 1)
+        self.assertIn("[ moleculetype ]\nL1 3", content)
+        self.assertIn("[ moleculetype ]\nL2 3", content)
+        self.assertIn(" oh  oh", content)
+
+    def test_merge_ligand_itps_conflict_raises(self):
+        itp1 = self.ws.write(
+            "l1.itp",
+            "[ atomtypes ]\nc3  c3  0.0  0.0  A  0.34  0.11\n"
+            "[ moleculetype ]\nL1 3\n",
+        )
+        itp2 = self.ws.write(
+            "l2.itp",
+            "[ atomtypes ]\nc3  c3  9.9  9.9  A  0.99  0.99\n"
+            "[ moleculetype ]\nL2 3\n",
+        )
+        out = os.path.join(self.ws.root, "merged.itp")
+        with self.assertRaises(Exception):
+            topology.merge_ligand_itps([itp1, itp2], ["L1", "L2"], out)
+
 
 if __name__ == "__main__":
     unittest.main()

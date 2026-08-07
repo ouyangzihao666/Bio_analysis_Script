@@ -17,6 +17,7 @@ class _SimulationStep(Step):
         "verbose": {"type": bool, "default": False},
         "nt": {"type": int, "default": None},
         "gpu_id": {"type": str, "default": ""},
+        "rdd": {"type": str, "default": ""},
         "extra_args": {"type": str, "default": ""},
         "continue_cpt": {"type": str, "default": ""},
         "timeout": {"type": float, "default": None},
@@ -31,6 +32,8 @@ class _SimulationStep(Step):
             args += ["-nt", str(ctx.params["nt"])]
         if ctx.params.get("gpu_id"):
             args += ["-gpu_id", ctx.params["gpu_id"]]
+        if ctx.params.get("rdd"):
+            args += ["-rdd", ctx.params["rdd"]]
         extra = ctx.params.get("extra_args") or ""
         if extra:
             args += shlex.split(extra)

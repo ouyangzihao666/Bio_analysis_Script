@@ -12,6 +12,7 @@ from mdkit.exceptions import ConfigError
 _INCLUDE_QUOTED = re.compile(r'^#include\s+"([^"]+)"\s*$')
 _MOLECULES_HEADER = re.compile(r"^\s*\[\s*molecules\s*\]\s*$")
 _MOLECULETYPE_HEADER = re.compile(r"^\s*\[\s*moleculetype\s*\]\s*$")
+_SECTION_HEADER = re.compile(r"^\s*\[\s*[a-z0-9_]+\s*\]\s*$")
 
 
 def absolutize_includes(src_top: str, dst_top: str) -> str:
@@ -133,3 +134,59 @@ def rename_molecule(itp_path: str, gro_path: str, new_name: str) -> None:
             gro_lines[idx] = line[:5] + new_name.ljust(5)[:5] + line[10:]
     with open(gro_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(gro_lines) + "\n")
+
+
+def merge_ligand_itps(itp_paths, ligand_names, out_path: str) -> None:
+    """Merge acpype-style ligand itps into one topology include.
+
+    GROMACS only allows a single [ atomtypes ] section, so atom types from
+    the first ligand are kept and duplicated sections are stripped from the
+    rest. Duplicate type names with differing parameters raise ConfigError.
+    """
+    if len(itp_paths) == 1:
+        import shutil
+
+        shutil.copyfile(itp_paths[0], out_path)
+        return
+    seen_types = {}
+    atomtype_lines = []
+    body_blocks = []
+    for idx, path in enumerate(itp_paths):
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+        in_atomtypes = False
+        kept = []
+        for line in lines:
+            if _SECTION_HEADER.match(line):
+                if line.strip().lower() == "[ atomtypes ]":
+                    in_atomtypes = True
+                    if not atomtype_lines:
+                        atomtype_lines.append(line)
+                    continue
+                in_atomtypes = False
+                kept.append(line)
+                continue
+            if in_atomtypes:
+                stripped = line.strip()
+                if stripped and not stripped.startswith(";"):
+                    fields = stripped.split()
+                    if len(fields) >= 2:
+                        tname = fields[0]
+                        if tname in seen_types and seen_types[tname] != stripped:
+                            raise ConfigError(
+                                "配体 %s 与之前的配体定义了不同的原子类型 %s，"
+                                "请检查 GAFF 原子类型冲突" % (ligand_names[idx], tname)
+                            )
+                        if tname not in seen_types:
+                            seen_types[tname] = stripped
+                            atomtype_lines.append(line)
+            else:
+                kept.append(line)
+        body_blocks.append(kept)
+    out_lines = list(atomtype_lines)
+    for block in body_blocks:
+        if out_lines and block:
+            out_lines.append("")
+        out_lines.extend(block)
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(out_lines) + "\n")

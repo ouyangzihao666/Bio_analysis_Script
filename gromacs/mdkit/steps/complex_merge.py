@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 from mdkit import gro, topology
+from mdkit.exceptions import ConfigError
 from mdkit.steps.base import Step
 
 
 class ComplexMergeStep(Step):
     name = "complex_merge"
-    version = "1.1"
+    version = "1.2"
     description = "蛋白-配体结构与拓扑合并（支持多配体、多拷贝）"
     inputs = ["processed_gro", "topol_top"]
     outputs = [
         ("complex_gro", "{system}_complex.gro", False),
         ("complex_top", "{system}_complex.top", False),
+        ("ligands_merged_itp", "ligands_merged.itp", True),
     ]
     param_schema = {}
 
@@ -42,9 +44,12 @@ class ComplexMergeStep(Step):
 
         complex_top = ctx.register_output("complex_top", "%s_complex.top" % system.name)
         topology.absolutize_includes(protein_top, complex_top)
-        topology.insert_includes_after_first(
-            complex_top, ["%s" % p for p in ligand_itps]
+        merged_itp = ctx.path("ligands_merged.itp")
+        topology.merge_ligand_itps(
+            ligand_itps, [l.name for l in system.ligands], merged_itp
         )
+        ctx.register_output("ligands_merged_itp", "ligands_merged.itp")
+        topology.insert_includes_after_first(complex_top, [merged_itp])
         topology.append_molecules(
             complex_top, [(l.name, l.count) for l in system.ligands]
         )
