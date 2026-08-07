@@ -48,7 +48,7 @@ mdkit run -w ... -s ... --from <step> --force
 3. **坏运行不覆盖好输出**：步骤失败后正式目录保持原状（事务化），不要用 `rm` 手动清理；用 `clean`。
 4. **不绕过 `ctx.run_gmx()`**：外部步骤也必须经统一的命令执行器（无 shell、超时、日志、组选择校验）。
 5. **干预点**：`awaiting_input` 状态必须先 `skip`（放行）或 `retry`（重跑），不要直接改 `run_status.json`。
-6. **环境**：用 `bioAna_gmx_user02` 环境执行；`doctor` 明确报缺失的工具不要硬跑配体步骤。
+6. **环境**：用配置好 GROMACS/ambertools 的 conda 环境执行；`doctor` 明确报缺失的工具不要硬跑配体步骤。
 
 ## 状态机速查
 

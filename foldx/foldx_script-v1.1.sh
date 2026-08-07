@@ -1,7 +1,6 @@
 # foldx_script.sh (v1.1) - FoldX计算自动化脚本（Linux bash版本）
 #!/bin/bash
 # FoldX计算自动化脚本 - Linux bash版本
-# 作者：豆包和欧阳梓豪
 # 版本：1.1
 # 日期：2025年11月12日
 # 更新日志：
@@ -39,7 +38,6 @@ declare -A OUTPUT_FILES=(
 show_version() {
     cat << EOF
 FoldX计算自动化脚本 - 版本 $VERSION
-作者：豆包和欧阳梓豪
 更新日志：
 v1.1 (2025-11-12)：
 1. 新增--version参数，支持查看版本及更新记录
