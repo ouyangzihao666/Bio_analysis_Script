@@ -110,7 +110,18 @@ def extract_molecule(src_path: str, out_path: str, selector) -> Dict:
 
 def count_components_in_block(block: Dict) -> int:
     """Count connected fragments in one mol2 molecule block (via BOND section)."""
-    n = block.get("natoms", 0)
+    n = 0
+    in_atom = False
+    for line in block["lines"]:
+        stripped = line.strip()
+        if stripped.startswith("@<TRIPOS>ATOM"):
+            in_atom = True
+            continue
+        if stripped.startswith("@<TRIPOS>"):
+            in_atom = False
+            continue
+        if in_atom and stripped and not stripped.startswith("#"):
+            n += 1
     if n <= 0:
         return 0
     parent = list(range(n))

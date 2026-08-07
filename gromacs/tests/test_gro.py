@@ -70,15 +70,25 @@ class GroTests(unittest.TestCase):
         self.assertIn("TER", content)
 
     def test_count_pdb_residue_components(self):
+        def hetatm(serial, name, resname, x, y, z):
+            return "HETATM%5d %-4s%1s%3s %1s%4d%1s   %8.3f%8.3f%8.3f%6.2f%6.2f" % (
+                serial, name, " ", resname, " ", 1, " ", x, y, z, 0.0, 0.0,
+            )
+
         pdb = self.ws.write(
             "mix.pdb",
-            "HETATM 101  C   UNK     0       1.000   1.000   1.000  0.00  0.00           C\n"
-            "HETATM 102  C   UNK     0       1.100   1.000   1.000  0.00  0.00           C\n"
-            "HETATM 103  O   UNK     0       2.000   2.000   2.000  0.00  0.00           O\n"
-            "HETATM 104  O   UNK     0       2.100   2.000   2.000  0.00  0.00           O\n"
-            "CONECT 101 102\n"
-            "CONECT 103 104\n"
-            "END\n",
+            "\n".join(
+                [
+                    hetatm(101, "C", "UNK", 1.0, 1.0, 1.0),
+                    hetatm(102, "C", "UNK", 1.1, 1.0, 1.0),
+                    hetatm(103, "O", "UNK", 2.0, 2.0, 2.0),
+                    hetatm(104, "O", "UNK", 2.1, 2.0, 2.0),
+                    "CONECT 101 102",
+                    "CONECT 103 104",
+                    "END",
+                ]
+            )
+            + "\n",
         )
         self.assertEqual(gro.count_pdb_residue_components(pdb, "UNK"), 2)
 

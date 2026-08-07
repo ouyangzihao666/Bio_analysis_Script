@@ -273,6 +273,7 @@ def count_pdb_residue_components(pdb_path: str, resname: str) -> int:
         return x
 
     with open(pdb_path, "r", encoding="utf-8", errors="replace") as fh:
+        residue_conect_found = False
         for line in fh:
             if not line.startswith("CONECT"):
                 continue
@@ -284,12 +285,17 @@ def count_pdb_residue_components(pdb_path: str, resname: str) -> int:
                 continue
             if fields[0] not in serial_set:
                 continue
+            residue_conect_found = True
             for other in fields[1:]:
                 if other in serial_set:
                     a, b = idx[fields[0]], idx[other]
                     ra, rb = find(a), find(b)
                     if ra != rb:
                         parent[ra] = rb
+    if not residue_conect_found:
+        # No CONECT records: cannot determine connectivity; assume single
+        # molecule (the post-parameterization itp check is the backstop).
+        return 1
     return len({find(i) for i in range(len(serials))})
 
 
