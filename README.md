@@ -121,6 +121,7 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 name: complex-md
 failure_policy: continue      # continue: 单体系失败不影响其他体系；stop: 立即停止
 layout: per_step              # per_step（默认，NN_步骤名 分目录）或 flat（体系目录平铺）
+stage_name: .stage            # 可选；每步的临时工作区目录名（默认 .stage，在步骤目录内）
 mdp_dir: mdp                  # 可选；内置模板目录，也可用绝对路径
 dirs:                         # 可选；覆盖分析时的目录约定（*_md_production 等）
   md_production: "10_md_production"
@@ -144,6 +145,16 @@ steps:
 ```
 
 步骤参数支持在工作流级 `defaults:`、步骤级 `params:`、体系级 `overrides:` 三层合并，后者优先级更高。每步可设 `on_failure: auto|pause`。
+
+**`failure_policy` 的作用范围**：它是 workflow 级设置，作用于本次 `mdkit run` 的所有体系。
+`continue`（默认）＝某体系某步失败后，该体系剩余步骤标记为 skipped，继续处理下一个体系；
+`stop`＝出错后立即终止整个 run（当前体系剩余步骤不再执行，后续体系也不再启动），进程以退出码 2 结束。
+它**不影响其他并行的 run**：每个 run 是独立进程、独立 work-dir、独立状态文件，
+一个 run 的 stop 不会波及别的 run。
+
+**临时工作区 `.stage`**：每个步骤在 `NN_步骤/.stage/` 内执行，成功后输出原子移入步骤目录、
+`.stage` 被清理；失败时 `.stage` 保留供调试。目录名可通过 workflow 的 `stage_name` 修改
+（仅限步骤目录内的简单目录名）。
 
 ### systems.yaml
 

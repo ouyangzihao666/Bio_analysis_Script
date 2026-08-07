@@ -307,7 +307,7 @@ class Runner:
             st["note"] = None
             self.state.save(data)
 
-            tx = Transaction(step_dir)
+            tx = Transaction(step_dir, stage_name=self.workflow.stage_name)
             stage = tx.begin()
             run_ctx = self._make_ctx(
                 system, spec, step, params, step_dir, stage, registry, self.workflow.resolve_mdp_dir(self._builtin_mdp_dir())

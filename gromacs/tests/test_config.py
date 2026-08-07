@@ -52,6 +52,24 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             load_workflow(path)
 
+    def test_stage_name_parsed(self):
+        path = self.ws.write(
+            "workflow.yaml",
+            WORKFLOW.replace("layout: per_step", "layout: per_step\nstage_name: .work"),
+        )
+        wf = load_workflow(path)
+        self.assertEqual(wf.stage_name, ".work")
+
+    def test_stage_name_rejects_path(self):
+        path = self.ws.write(
+            "workflow.yaml",
+            WORKFLOW.replace(
+                "layout: per_step", "layout: per_step\nstage_name: /tmp/x"
+            ),
+        )
+        with self.assertRaises(ConfigError):
+            load_workflow(path)
+
     def test_unknown_step_in_workflow(self):
         path = self.ws.write(
             "workflow.yaml",

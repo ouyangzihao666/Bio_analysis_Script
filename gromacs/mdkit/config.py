@@ -64,6 +64,7 @@ class WorkflowConfig:
         self.name: str = str(data.get("name", os.path.basename(self.path)))
         self.failure_policy: str = str(data.get("failure_policy", "continue"))
         self.layout: str = str(data.get("layout", "per_step"))
+        self.stage_name: str = str(data.get("stage_name", ".stage"))
         _require(
             self.failure_policy in ("continue", "stop"),
             "failure_policy 必须是 continue 或 stop",
@@ -71,6 +72,10 @@ class WorkflowConfig:
         _require(
             self.layout in ("per_step", "flat"),
             "layout 必须是 per_step 或 flat",
+        )
+        _require(
+            self.stage_name and "/" not in self.stage_name and "\\" not in self.stage_name,
+            "stage_name 必须是简单的目录名（不含路径分隔符）",
         )
         raw_steps = data.get("steps")
         _require(isinstance(raw_steps, list) and raw_steps, "steps 必须是非空列表")

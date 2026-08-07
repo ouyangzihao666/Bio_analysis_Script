@@ -58,6 +58,16 @@ class TransactionTests(unittest.TestCase):
         self.assertIn("a", final)
         self.assertNotIn("opt", final)
 
+    def test_custom_stage_name(self):
+        tx = Transaction(os.path.join(self.ws.root, "step"), stage_name=".work")
+        stage = tx.begin()
+        self.assertTrue(os.path.isdir(os.path.join(self.ws.root, "step", ".work")))
+        with open(os.path.join(stage, "a.txt"), "w") as fh:
+            fh.write("a")
+        final = tx.commit({"a": "a.txt"}, {})
+        self.assertTrue(os.path.isfile(final["a"]))
+        self.assertFalse(os.path.exists(os.path.join(self.ws.root, "step", ".work")))
+
 
 if __name__ == "__main__":
     unittest.main()
