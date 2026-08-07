@@ -2,6 +2,10 @@ name: analysis
 failure_policy: continue
 layout: per_step
 
+# 解析已有 run 输出目录的约定；如你的生产目录名不同，改这里
+dirs:
+  md_production: "*_md"
+
 steps:
   - step: rmsd
     params:
