@@ -13,7 +13,7 @@ from mdkit.steps.base import Step
 
 class LigandPrepStep(Step):
     name = "ligand_prep"
-    version = "1.1"
+    version = "1.2"
     description = "配体加氢、电荷计算与 GROMACS 拓扑生成（GAFF2/手动）"
     inputs = []
     outputs = []
@@ -57,6 +57,7 @@ class LigandPrepStep(Step):
         shutil.copyfile(ligand.itp_file, itp)
         shutil.copyfile(ligand.gro_file, gr)
         topology.rename_molecule(itp, gr, ligand.name)
+        self._check_components(ctx, ligand, itp)
 
     def _auto(self, ctx, ligand) -> None:
         fmt = ligand.resolved_format()
@@ -137,6 +138,7 @@ class LigandPrepStep(Step):
         shutil.copyfile(src_itp, itp)
         shutil.copyfile(src_gro, gr)
         topology.rename_molecule(itp, gr, ligand.name)
+        self._check_components(ctx, ligand, itp)
         ctx.remove_temp("%s.acpype" % os.path.basename(acpype_dir.rstrip("/")))
         ctx.remove_temp("%s_H.sdf" % ligand.name)
         ctx.remove_temp("%s.mol2" % ligand.name)
@@ -144,3 +146,14 @@ class LigandPrepStep(Step):
             ctx.remove_temp("%s_src.mol2" % ligand.name)
         if ligand.residue is not None:
             ctx.remove_temp("%s_lig.pdb" % ligand.name)
+
+    def _check_components(self, ctx, ligand, itp_path: str) -> None:
+        natoms, n_components = topology.count_components(itp_path)
+        if n_components > 1:
+            raise StepError(
+                "配体 %s 的拓扑包含 %d 个互不连接的分子片段（共 %d 原子），"
+                "说明输入把多个小分子合并到了同一残基名下，无法自动拆分。"
+                "解决方案：人工拆分后为每个小分子提供独立的 sdf/mol2 文件"
+                "（或 PDB 内使用不同残基名），再重新运行。"
+                % (ligand.name, n_components, natoms)
+            )

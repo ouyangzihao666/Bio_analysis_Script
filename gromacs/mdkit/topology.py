@@ -190,3 +190,50 @@ def merge_ligand_itps(itp_paths, ligand_names, out_path: str) -> None:
         out_lines.extend(block)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out_lines) + "\n")
+
+
+def count_components(itp_path: str):
+    """Count disconnected molecular fragments in an acpype-style itp.
+
+    A merged multi-molecule input (e.g. two ligands under the same residue
+    name) produces one moleculetype with several disconnected fragments.
+    Returns (natoms, n_components).
+    """
+    with open(itp_path, "r", encoding="utf-8", errors="replace") as fh:
+        lines = fh.read().splitlines()
+    section = None
+    natoms = 0
+    bonds = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("["):
+            section = stripped[1:].strip().rstrip("]").strip().lower()
+            continue
+        if not stripped or stripped.startswith(";"):
+            continue
+        fields = stripped.split()
+        if section == "atoms":
+            natoms += 1
+        elif section == "bonds":
+            if len(fields) >= 3:
+                try:
+                    bonds.append((int(fields[0]), int(fields[1])))
+                except ValueError:
+                    pass
+    if natoms == 0:
+        return 0, 0
+    parent = list(range(natoms))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for a, b in bonds:
+        if 1 <= a <= natoms and 1 <= b <= natoms:
+            ra, rb = find(a - 1), find(b - 1)
+            if ra != rb:
+                parent[ra] = rb
+    n_components = len({find(i) for i in range(natoms)})
+    return natoms, n_components

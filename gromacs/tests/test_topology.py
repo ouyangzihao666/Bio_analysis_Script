@@ -107,6 +107,27 @@ class TopologyTests(unittest.TestCase):
         with self.assertRaises(Exception):
             topology.merge_ligand_itps([itp1, itp2], ["L1", "L2"], out)
 
+    def test_count_components_detects_merged_molecules(self):
+        merged = self.ws.write(
+            "merged.itp",
+            "[ moleculetype ]\nMIX 3\n"
+            "[ atoms ]\n1 c3 1 MIX C1 1 0.0 12.0\n"
+            "2 c3 1 MIX C2 2 0.0 12.0\n"
+            "3 oh 1 MIX O1 3 0.0 16.0\n"
+            "4 c3 1 MIX C3 4 0.0 12.0\n"
+            "5 c3 1 MIX C4 5 0.0 12.0\n"
+            "[ bonds ]\n1 2 1\n2 3 1\n4 5 1\n",
+        )
+        self.assertEqual(topology.count_components(merged), (5, 2))
+        single = self.ws.write(
+            "single.itp",
+            "[ moleculetype ]\nFDME 3\n"
+            "[ atoms ]\n1 c3 1 FDME C1 1 0.0 12.0\n"
+            "2 c3 1 FDME C2 2 0.0 12.0\n"
+            "[ bonds ]\n1 2 1\n",
+        )
+        self.assertEqual(topology.count_components(single), (2, 1))
+
 
 if __name__ == "__main__":
     unittest.main()
