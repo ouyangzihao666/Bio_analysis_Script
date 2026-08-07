@@ -92,14 +92,40 @@ class Step:
             )
         return value
 
+    def build_commands(self, ctx: "StepContext") -> list:
+        """Return the external commands this step would run.
+
+        Each item: (kind, argv, stdin_text), kind in ("gmx", "cmd").
+        Used by ``preview`` (dry-run) and by ``run`` to execute.
+        """
+        return []
+
+    def exec_commands(self, ctx: "StepContext") -> None:
+        """Execute the commands built by ``build_commands``."""
+        for item in self.build_commands(ctx):
+            kind, argv, stdin = item[0], item[1], item[2]
+            timeout = item[3] if len(item) > 3 else None
+            if kind == "gmx":
+                ctx.run_gmx(argv, stdin_text=stdin, timeout=timeout)
+            else:
+                ctx.run_cmd(argv, stdin_text=stdin, timeout=timeout)
+
     def preview(self, ctx: "StepContext") -> None:
-        """Dry-run preview; prints what the step would do."""
-        ctx.log.info(
-            "[preview] %s: dir=%s params=%s",
-            self.name,
-            ctx.step_dir,
-            ctx.params,
-        )
+        """Dry-run preview; prints the commands the step would run."""
+        from mdkit.gmx import CommandRunner
+
+        ctx.log.info("[preview] 步骤 %s -> 目录 %s", self.name, ctx.step_dir)
+        commands = self.build_commands(ctx)
+        if not commands:
+            ctx.log.info("  （纯内部处理，无外部命令）")
+            return
+        for item in commands:
+            kind, argv, stdin = item[0], item[1], item[2]
+            prefix = "gmx " if kind == "gmx" else ""
+            line = prefix + CommandRunner.quote(argv)
+            if stdin:
+                line += "   <<< %r" % stdin.strip()
+            ctx.log.info("  $ %s", line)
 
     def run(self, ctx: "StepContext") -> None:
         raise NotImplementedError("%s.run() 未实现" % self.name)

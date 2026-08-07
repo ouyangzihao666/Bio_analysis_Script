@@ -19,15 +19,23 @@ class SolvateStep(Step):
     env_requirements = ["gmx"]
 
     def run(self, ctx) -> None:
-        box = ctx.get_input("box_gro")
         top = ctx.registry.require_top(self.name)
-        solv_gro = ctx.register_output("solv_gro", "%s_solv.gro" % ctx.system.name)
         solv_top = ctx.register_output(
             "solvated_top", "%s_solv.top" % ctx.system.name
         )
         topology.absolutize_includes(top, solv_top)
-        ctx.run_gmx(
-            [
+        self.exec_commands(ctx)
+
+    def build_commands(self, ctx):
+        box = ctx.get_input("box_gro")
+        solv_gro = ctx.register_output("solv_gro", "%s_solv.gro" % ctx.system.name)
+        solv_top = ctx.register_output(
+            "solvated_top", "%s_solv.top" % ctx.system.name
+        )
+        return [
+            (
+                "gmx",
+                [
                 "solvate",
                 "-cp",
                 box,
@@ -37,8 +45,10 @@ class SolvateStep(Step):
                 solv_gro,
                 "-p",
                 solv_top,
-            ]
-        )
+                ],
+                None,
+            )
+        ]
 
     def resolve_inputs(self, system) -> list:
         return ["box_gro", "complex_top" if system.has_ligands else "topol_top"]

@@ -23,6 +23,9 @@ class BoxStep(Step):
     env_requirements = ["gmx"]
 
     def run(self, ctx) -> None:
+        self.exec_commands(ctx)
+
+    def build_commands(self, ctx):
         src = ctx.registry.require_structure(self.name)
         out = ctx.register_output("box_gro", "%s_waterbox.gro" % ctx.system.name)
         args = [
@@ -38,7 +41,7 @@ class BoxStep(Step):
         ]
         if ctx.params["center"]:
             args.append("-c")
-        ctx.run_gmx(args)
+        return [("gmx", args, None)]
 
     def resolve_inputs(self, system) -> list:
         return ["complex_gro"] if system.has_ligands else ["processed_gro"]

@@ -26,6 +26,9 @@ class _AnalysisStep(Step):
     def _traj(self, ctx):
         return ctx.registry.require_traj(self.name)
 
+    def run(self, ctx) -> None:
+        self.exec_commands(ctx)
+
     def resolve_inputs(self, system) -> list:
         logicals = ["md_tpr"]
         for candidate in ("corrected_xtc", "md_xtc"):
@@ -35,8 +38,6 @@ class _AnalysisStep(Step):
         return logicals
 
     def _registry_get(self, logical):
-        # Used during input resolution without a live registry; overridden in
-        # the runner via StepContext. Here we return None (runner handles it).
         return None
 
 
@@ -50,14 +51,17 @@ class RmsdStep(_AnalysisStep):
     param_schema["cal_group"] = {"type": str, "default": "C-alpha"}
     outputs = [("rmsd_xvg", "{system}_rmsd.xvg", False)]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         tpr = ctx.get_input("md_tpr")
         out = ctx.register_output("rmsd_xvg", "%s_rmsd.xvg" % ctx.system.name)
-        ctx.run_gmx(
-            ["rms", "-s", tpr, "-f", self._traj(ctx), "-o", out, "-tu", ctx.params["tu"]]
-            + self._ndx_args(ctx),
-            stdin_text="%s\n%s\n" % (ctx.params["fit_group"], ctx.params["cal_group"]),
-        )
+        return [
+            (
+                "gmx",
+                ["rms", "-s", tpr, "-f", self._traj(ctx), "-o", out, "-tu", ctx.params["tu"]]
+                + self._ndx_args(ctx),
+                "%s\n%s\n" % (ctx.params["fit_group"], ctx.params["cal_group"]),
+            )
+        ]
 
 
 class RmsfStep(_AnalysisStep):
@@ -69,14 +73,17 @@ class RmsfStep(_AnalysisStep):
     param_schema["cal_group"] = {"type": str, "default": "Protein"}
     outputs = [("rmsf_xvg", "{system}_rmsf.xvg", False)]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         tpr = ctx.get_input("md_tpr")
         out = ctx.register_output("rmsf_xvg", "%s_rmsf.xvg" % ctx.system.name)
-        ctx.run_gmx(
-            ["rmsf", "-s", tpr, "-f", self._traj(ctx), "-o", out, "-res"]
-            + self._ndx_args(ctx),
-            stdin_text="%s\n" % ctx.params["cal_group"],
-        )
+        return [
+            (
+                "gmx",
+                ["rmsf", "-s", tpr, "-f", self._traj(ctx), "-o", out, "-res"]
+                + self._ndx_args(ctx),
+                "%s\n" % ctx.params["cal_group"],
+            )
+        ]
 
 
 class GyrateStep(_AnalysisStep):
@@ -88,14 +95,17 @@ class GyrateStep(_AnalysisStep):
     param_schema["cal_group"] = {"type": str, "default": "Protein"}
     outputs = [("gyrate_xvg", "{system}_gyrate.xvg", False)]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         tpr = ctx.get_input("md_tpr")
         out = ctx.register_output("gyrate_xvg", "%s_gyrate.xvg" % ctx.system.name)
-        ctx.run_gmx(
-            ["gyrate", "-s", tpr, "-f", self._traj(ctx), "-o", out, "-tu", ctx.params["tu"]]
-            + self._ndx_args(ctx),
-            stdin_text="%s\n" % ctx.params["cal_group"],
-        )
+        return [
+            (
+                "gmx",
+                ["gyrate", "-s", tpr, "-f", self._traj(ctx), "-o", out, "-tu", ctx.params["tu"]]
+                + self._ndx_args(ctx),
+                "%s\n" % ctx.params["cal_group"],
+            )
+        ]
 
 
 class HbondStep(_AnalysisStep):
@@ -108,14 +118,17 @@ class HbondStep(_AnalysisStep):
     param_schema["target_group"] = {"type": str, "default": "Ligand"}
     outputs = [("hbond_xvg", "{system}_hbnum.xvg", False)]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         tpr = ctx.get_input("md_tpr")
         out = ctx.register_output("hbond_xvg", "%s_hbnum.xvg" % ctx.system.name)
-        ctx.run_gmx(
-            ["hbond", "-s", tpr, "-f", self._traj(ctx), "-num", out, "-tu", ctx.params["tu"]]
-            + self._ndx_args(ctx),
-            stdin_text="%s\n%s\n" % (ctx.params["ref_group"], ctx.params["target_group"]),
-        )
+        return [
+            (
+                "gmx",
+                ["hbond", "-s", tpr, "-f", self._traj(ctx), "-num", out, "-tu", ctx.params["tu"]]
+                + self._ndx_args(ctx),
+                "%s\n%s\n" % (ctx.params["ref_group"], ctx.params["target_group"]),
+            )
+        ]
 
 
 class DsspStep(_AnalysisStep):
@@ -130,15 +143,18 @@ class DsspStep(_AnalysisStep):
         ("dssp_num", "{system}_dssp_num.xvg", False),
     ]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         tpr = ctx.get_input("md_tpr")
         dat = ctx.register_output("dssp_dat", "%s_dssp.dat" % ctx.system.name)
         num = ctx.register_output("dssp_num", "%s_dssp_num.xvg" % ctx.system.name)
-        ctx.run_gmx(
-            ["dssp", "-s", tpr, "-f", self._traj(ctx), "-o", dat, "-num", num, "-tu", ctx.params["tu"]]
-            + self._ndx_args(ctx),
-            stdin_text="%s\n" % ctx.params["cal_group"],
-        )
+        return [
+            (
+                "gmx",
+                ["dssp", "-s", tpr, "-f", self._traj(ctx), "-o", dat, "-num", num, "-tu", ctx.params["tu"]]
+                + self._ndx_args(ctx),
+                "%s\n" % ctx.params["cal_group"],
+            )
+        ]
 
 
 class OutpdbStep(_AnalysisStep):
@@ -151,7 +167,7 @@ class OutpdbStep(_AnalysisStep):
     param_schema["structure"] = {"type": str, "default": "corrected_gro"}
     outputs = [("outpdb_pdb", "{system}_md_corrected.pdb", False)]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         tpr = ctx.get_input("md_tpr")
         structure_key = ctx.params["structure"]
         structure = ctx.registry.get(structure_key)
@@ -161,7 +177,10 @@ class OutpdbStep(_AnalysisStep):
                 details={"logical": structure_key},
             )
         out = ctx.register_output("outpdb_pdb", "%s_md_corrected.pdb" % ctx.system.name)
-        ctx.run_gmx(
-            ["trjconv", "-s", tpr, "-f", structure, "-o", out] + self._ndx_args(ctx),
-            stdin_text="%s\n" % ctx.params["out_group"],
-        )
+        return [
+            (
+                "gmx",
+                ["trjconv", "-s", tpr, "-f", structure, "-o", out] + self._ndx_args(ctx),
+                "%s\n" % ctx.params["out_group"],
+            )
+        ]

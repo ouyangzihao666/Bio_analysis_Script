@@ -174,3 +174,48 @@ class LigandPrepStep(Step):
                 "（或 PDB 内使用不同残基名），再重新运行。"
                 % (ligand.name, n_components, natoms)
             )
+
+    def build_commands(self, ctx):
+        """Preview of the ligand toolchain (no files are created)."""
+        cmds = []
+        for ligand in ctx.system.ligands:
+            fmt = ligand.resolved_format()
+            if ligand.residue is not None:
+                src = ctx.path("%s_lig.pdb" % ligand.name)
+                fmt = "pdb"
+            else:
+                src = ctx.registry.get("ligand_sdf:%s" % ligand.name) or ligand.file
+                if fmt == "mol2" and ligand.source_mol_index is not None:
+                    src = ctx.path("%s_src.mol2" % ligand.name)
+            sdf_h = ctx.path("%s_H.sdf" % ligand.name)
+            mol2_out = ctx.path("%s.mol2" % ligand.name)
+            cmds.append(
+                ("cmd", ["obabel", "-i", fmt, src, "-o", "sdf", "-O", sdf_h, "-h"], None)
+            )
+            cmds.append(
+                (
+                    "cmd",
+                    [
+                        "antechamber",
+                        "-i",
+                        sdf_h,
+                        "-fi",
+                        "sdf",
+                        "-o",
+                        mol2_out,
+                        "-fo",
+                        "mol2",
+                        "-at",
+                        ctx.params["ligand_force_field"],
+                        "-c",
+                        ctx.params["charge_method"],
+                        "-s",
+                        "2",
+                        "-nc",
+                        str(int(ligand.charge)),
+                    ],
+                    None,
+                )
+            )
+            cmds.append(("cmd", ["acpype", "-i", mol2_out], None))
+        return cmds

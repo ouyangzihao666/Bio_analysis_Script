@@ -65,6 +65,29 @@ class ProteinPrepStep(Step):
                 ctx.params["ph"],
             )
 
+        self.exec_commands(ctx)
+        if os.path.isfile(ctx.path("posre.itp")):
+            ctx.register_output("posre_itp", "posre.itp")
+        for ff_dir in sorted(glob.glob(ctx.path("*.ff"))):
+            name = os.path.basename(ff_dir.rstrip(os.sep))
+            if os.path.isdir(ff_dir):
+                ctx.register_output("ff_dir_%s" % name, name)
+        ctx.log.info(
+            "蛋白预处理完成: %s",
+            ctx.path("%s_processed.gro" % system.name),
+        )
+
+    def build_commands(self, ctx):
+        system = ctx.system
+        ligand_resnames = [
+            l.residue for l in system.ligands if l.residue is not None
+        ]
+        if len(system.protein.chains) > 1:
+            source = ctx.path("%s_merged.pdb" % system.name)
+        else:
+            source = system.protein.chains[0]
+            if ctx.params["remove_water"] or ligand_resnames:
+                source = ctx.path("%s_clean.pdb" % system.name)
         processed = ctx.register_output(
             "processed_gro", "%s_processed.gro" % system.name
         )
@@ -72,7 +95,7 @@ class ProteinPrepStep(Step):
         args = [
             "pdb2gmx",
             "-f",
-            source_pdb,
+            source,
             "-o",
             processed,
             "-p",
@@ -86,14 +109,7 @@ class ProteinPrepStep(Step):
             args.append("-ignh")
         if ctx.params.get("chainsep"):
             args += ["-chainsep", ctx.params["chainsep"]]
-        ctx.run_gmx(args, stdin_text="0\n")
-        if os.path.isfile(ctx.path("posre.itp")):
-            ctx.register_output("posre_itp", "posre.itp")
-        for ff_dir in sorted(glob.glob(ctx.path("*.ff"))):
-            name = os.path.basename(ff_dir.rstrip(os.sep))
-            if os.path.isdir(ff_dir):
-                ctx.register_output("ff_dir_%s" % name, name)
-        ctx.log.info("蛋白预处理完成: %s", processed)
+        return [("gmx", args, "0\n")]
 
 
 def _strip_pdb(src: str, dst: str, extra_resnames) -> None:

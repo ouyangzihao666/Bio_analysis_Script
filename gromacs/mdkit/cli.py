@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 
@@ -27,6 +28,8 @@ from mdkit.runner import (
     step_dir_for,
 )
 from mdkit.steps import load_steps
+from mdkit.gmx import CommandRunner
+from mdkit.steps.base import StepContext
 
 
 EXIT_OK = 0
@@ -162,6 +165,44 @@ def cmd_plan(args, log) -> int:
                         _builtin_mdp_dir()
                     ),
                 }
+            rec["commands"] = []
+            try:
+                plan_ctx = StepContext(
+                    system=system,
+                    step=step,
+                    params=params,
+                    step_dir=step_dir,
+                    cwd=step_dir,
+                    registry=registry,
+                    cmd=CommandRunner(log, dry_run=True),
+                    log=log,
+                    mdp_dir=workflow.resolve_mdp_dir(_builtin_mdp_dir()),
+                    run_dir=work_dir,
+                )
+                for kind, argv, stdin in step.build_commands(plan_ctx):
+                    prefix = "gmx " if kind == "gmx" else ""
+                    line = prefix + CommandRunner.quote(argv)
+                    if stdin:
+                        line += "   <<< %r" % stdin.strip()
+                    rec["commands"].append(line)
+            except Exception as exc:
+                rec["commands_note"] = "（无法解析命令: %s）" % exc
+            # Register this step's outputs so downstream steps can resolve.
+            for logical, tpl, _opt in step.outputs:
+                fname = tpl.format(system=system.name)
+                registry.set(logical, os.path.join(step_dir, fname), producer=spec.name)
+            if spec.name == "ligand_prep" and system.has_ligands:
+                for ligand in system.ligands:
+                    registry.set(
+                        "ligand_gro:%s" % ligand.name,
+                        os.path.join(step_dir, "%s_GMX.gro" % ligand.name),
+                        producer=spec.name,
+                    )
+                    registry.set(
+                        "ligand_itp:%s" % ligand.name,
+                        os.path.join(step_dir, "%s_GMX.itp" % ligand.name),
+                        producer=spec.name,
+                    )
             steps_out.append(rec)
         result["systems"].append({"name": system.name, "steps": steps_out})
         result["systems"][-1]["review_notes"] = getattr(
@@ -178,6 +219,10 @@ def cmd_plan(args, log) -> int:
                 print("  %-16s -> %s" % (st["step"], st["dir"]))
                 if "mdp" in st:
                     print("       mdp: %s overrides=%s" % (st["mdp"]["spec"], st["mdp"]["overrides"]))
+                for cmd in st.get("commands", []):
+                    print("       $ %s" % cmd)
+                if st.get("commands_note"):
+                    print("       %s" % st["commands_note"])
     return EXIT_OK
 
 
@@ -206,10 +251,11 @@ def cmd_status(args, log) -> int:
     if not data:
         raise ConfigError("run 状态不存在: %s" % args.run_dir)
     if args.json:
-        emit(data, True)
+        emit(_with_progress(data, args.run_dir), True)
         return EXIT_OK
     systems = data.get("systems", {})
-    step_order = _workflow_step_order(data)
+    workflow = _load_run_workflow(data)
+    step_order = workflow.step_names() if workflow else []
     hidden_pending = 0
     shown_any = False
     for name, sys_entry in systems.items():
@@ -237,7 +283,17 @@ def cmd_status(args, log) -> int:
                 extra = "  (%s)" % st["note"]
             elif st.get("error"):
                 extra = "  (%s)" % st["error"]
-            print("  %-16s %-14s%s%s" % (step_name, st.get("status"), dur, extra))
+            prog = ""
+            if st.get("status") == "running" and workflow:
+                p = _step_progress(workflow, args.run_dir, name, step_name)
+                if p:
+                    prog = "   step %s/%s (%.1f%%), t=%.1f ps" % (
+                        p["step"],
+                        p["nsteps"] or "?",
+                        p["percent"] or 0.0,
+                        p["time_ps"],
+                    )
+            print("  %-16s %-14s%s%s%s" % (step_name, st.get("status"), dur, extra, prog))
     if hidden_pending:
         print(
             "（另有 %d 个体系在本 run 中未执行，均为 pending；"
@@ -250,15 +306,88 @@ def cmd_status(args, log) -> int:
 
 def _workflow_step_order(data: dict):
     """Return workflow step names in execution order (empty if unknown)."""
+    wf = _load_run_workflow(data)
+    return wf.step_names() if wf else []
+
+
+def _load_run_workflow(data: dict):
     wf_path = (data.get("run") or {}).get("workflow")
     if not wf_path or not os.path.isfile(wf_path):
-        return []
+        return None
     try:
         from mdkit.config import load_workflow
 
-        return load_workflow(wf_path).step_names()
+        return load_workflow(wf_path)
     except Exception:
-        return []
+        return None
+
+
+def _step_progress(workflow, run_dir: str, system_name: str, step_name: str):
+    """Current mdrun step/time from the live log, plus nsteps for a percentage."""
+    try:
+        from mdkit.runner import step_dir_for
+
+        spec = workflow.step_by_name(step_name)
+        if spec is None:
+            return None
+        step_dir = step_dir_for(workflow, run_dir, system_name, spec)
+        log = os.path.join(step_dir, ".stage", "%s_%s.log" % (system_name, step_name))
+        if not os.path.isfile(log):
+            return None
+        last = None
+        in_table = False
+        with open(log, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("Step") and "Time" in line:
+                    in_table = True
+                    continue
+                if in_table:
+                    m = re.match(r"^\s*(\d+)\s+([0-9.eE+-]+)\s*$", line)
+                    if m:
+                        last = (int(m.group(1)), float(m.group(2)))
+                    else:
+                        in_table = False
+        if not last:
+            return None
+        nsteps = None
+        for name in (
+            "%s.mdp" % step_name,
+            "minim.mdp",
+            "nvt.mdp",
+            "npt.mdp",
+            "md.mdp",
+            "ions.mdp",
+        ):
+            p = os.path.join(step_dir, ".stage", name)
+            if os.path.isfile(p):
+                with open(p, "r", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        m = re.match(r"^\s*nsteps\s*=\s*(\d+)", line)
+                        if m:
+                            nsteps = int(m.group(1))
+                if nsteps:
+                    break
+        percent = (100.0 * last[0] / nsteps) if nsteps else None
+        return {"step": last[0], "time_ps": last[1], "nsteps": nsteps, "percent": percent}
+    except Exception:
+        return None
+
+
+def _with_progress(data: dict, run_dir: str) -> dict:
+    """Return a copy of the status with live progress injected (not persisted)."""
+    import copy
+
+    out = copy.deepcopy(data)
+    workflow = _load_run_workflow(data)
+    if not workflow:
+        return out
+    for name, sys_entry in out.get("systems", {}).items():
+        for step_name, st in sys_entry.get("steps", {}).items():
+            if st.get("status") == "running":
+                p = _step_progress(workflow, run_dir, name, step_name)
+                if p:
+                    st["progress"] = p
+    return out
 
 
 def cmd_report(args, log) -> int:

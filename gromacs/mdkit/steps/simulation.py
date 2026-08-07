@@ -23,8 +23,16 @@ class _SimulationStep(Step):
         "timeout": {"type": float, "default": None},
     }
     env_requirements = ["gmx"]
+    mdp_file = "md.mdp"
 
-    def _run_mdrun(self, ctx, deffnm: str, tpr: str) -> None:
+    def run(self, ctx) -> None:
+        ctx.render_mdp(ctx.params["mdp"], ctx.params["mdp_overrides"], self._mdp_name())
+        self.exec_commands(ctx)
+
+    def _mdp_name(self) -> str:
+        return self.mdp_file
+
+    def _mdrun_args(self, ctx, deffnm: str, tpr: str) -> list:
         args = ["mdrun", "-deffnm", deffnm, "-s", tpr]
         if ctx.params["verbose"]:
             args.append("-v")
@@ -39,7 +47,23 @@ class _SimulationStep(Step):
             args += shlex.split(extra)
         if ctx.params.get("continue_cpt"):
             args += ["-cpi", ctx.params["continue_cpt"]]
-        ctx.run_gmx(args, timeout=ctx.params.get("timeout"))
+        return args
+
+    def _grompp(self, ctx, tpr, mdp_name, *extra_pairs):
+        argv = [
+            "grompp",
+            "-maxwarn",
+            str(ctx.params["maxwarn"]),
+            "-f",
+            ctx.path(mdp_name),
+            "-p",
+            ctx.get_input("ions_top"),
+            "-o",
+            tpr,
+        ]
+        for i in range(0, len(extra_pairs), 2):
+            argv += [extra_pairs[i], extra_pairs[i + 1]]
+        return argv
 
 
 class EmStep(_SimulationStep):
@@ -57,33 +81,22 @@ class EmStep(_SimulationStep):
         ("em_cpt", "{system}_em.cpt", True),
     ]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         gro_in = ctx.get_input("ions_gro")
-        top = ctx.get_input("ions_top")
         tpr = ctx.register_output("em_tpr", "%s_em.tpr" % ctx.system.name)
-        mdp_path, _ = ctx.render_mdp(
-            ctx.params["mdp"], ctx.params["mdp_overrides"], "minim.mdp"
-        )
-        ctx.run_gmx(
-            [
-                "grompp",
-                "-maxwarn",
-                str(ctx.params["maxwarn"]),
-                "-f",
-                mdp_path,
-                "-c",
-                gro_in,
-                "-p",
-                top,
-                "-o",
-                tpr,
-            ]
-        )
-        ctx.register_output("em_gro", "%s_em.gro" % ctx.system.name)
-        ctx.register_output("em_edr", "%s_em.edr" % ctx.system.name)
-        ctx.register_output("em_log", "%s_em.log" % ctx.system.name)
-        ctx.register_output("em_cpt", "%s_em.cpt" % ctx.system.name, optional=True)
-        self._run_mdrun(ctx, "%s_em" % ctx.system.name, tpr)
+        for logical, suffix, optional in (
+            ("em_gro", "gro", False),
+            ("em_edr", "edr", False),
+            ("em_log", "log", False),
+            ("em_cpt", "cpt", True),
+        ):
+            ctx.register_output(
+                logical, "%s_em.%s" % (ctx.system.name, suffix), optional=optional
+            )
+        grompp = self._grompp(ctx, tpr, self.mdp_file, "-c", gro_in)
+        mdrun = self._mdrun_args(ctx, "%s_em" % ctx.system.name, tpr)
+        to = ctx.params.get("timeout")
+        return [("gmx", grompp, None, to), ("gmx", mdrun, None, to)]
 
 
 class NvtStep(_SimulationStep):
@@ -93,6 +106,7 @@ class NvtStep(_SimulationStep):
     inputs = ["em_gro", "ions_top"]
     param_schema = dict(_SimulationStep.param_schema)
     param_schema["mdp"] = {"type": str, "default": "nvt"}
+    mdp_file = "nvt.mdp"
     outputs = [
         ("nvt_tpr", "{system}_nvt.tpr", False),
         ("nvt_gro", "{system}_nvt.gro", False),
@@ -103,30 +117,9 @@ class NvtStep(_SimulationStep):
         ("nvt_trr", "{system}_nvt.trr", True),
     ]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         gro_in = ctx.get_input("em_gro")
-        top = ctx.get_input("ions_top")
         tpr = ctx.register_output("nvt_tpr", "%s_nvt.tpr" % ctx.system.name)
-        mdp_path, _ = ctx.render_mdp(
-            ctx.params["mdp"], ctx.params["mdp_overrides"], "nvt.mdp"
-        )
-        ctx.run_gmx(
-            [
-                "grompp",
-                "-maxwarn",
-                str(ctx.params["maxwarn"]),
-                "-f",
-                mdp_path,
-                "-c",
-                gro_in,
-                "-r",
-                gro_in,
-                "-p",
-                top,
-                "-o",
-                tpr,
-            ]
-        )
         for logical, suffix, optional in (
             ("nvt_gro", "gro", False),
             ("nvt_edr", "edr", False),
@@ -138,7 +131,10 @@ class NvtStep(_SimulationStep):
             ctx.register_output(
                 logical, "%s_nvt.%s" % (ctx.system.name, suffix), optional=optional
             )
-        self._run_mdrun(ctx, "%s_nvt" % ctx.system.name, tpr)
+        grompp = self._grompp(ctx, tpr, self.mdp_file, "-c", gro_in, "-r", gro_in)
+        mdrun = self._mdrun_args(ctx, "%s_nvt" % ctx.system.name, tpr)
+        to = ctx.params.get("timeout")
+        return [("gmx", grompp, None, to), ("gmx", mdrun, None, to)]
 
 
 class NptStep(_SimulationStep):
@@ -148,6 +144,7 @@ class NptStep(_SimulationStep):
     inputs = ["nvt_gro", "nvt_cpt", "ions_top"]
     param_schema = dict(_SimulationStep.param_schema)
     param_schema["mdp"] = {"type": str, "default": "npt"}
+    mdp_file = "npt.mdp"
     outputs = [
         ("npt_tpr", "{system}_npt.tpr", False),
         ("npt_gro", "{system}_npt.gro", False),
@@ -158,33 +155,10 @@ class NptStep(_SimulationStep):
         ("npt_trr", "{system}_npt.trr", True),
     ]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         gro_in = ctx.get_input("nvt_gro")
         cpt_in = ctx.get_input("nvt_cpt")
-        top = ctx.get_input("ions_top")
         tpr = ctx.register_output("npt_tpr", "%s_npt.tpr" % ctx.system.name)
-        mdp_path, _ = ctx.render_mdp(
-            ctx.params["mdp"], ctx.params["mdp_overrides"], "npt.mdp"
-        )
-        ctx.run_gmx(
-            [
-                "grompp",
-                "-maxwarn",
-                str(ctx.params["maxwarn"]),
-                "-f",
-                mdp_path,
-                "-c",
-                gro_in,
-                "-r",
-                gro_in,
-                "-t",
-                cpt_in,
-                "-p",
-                top,
-                "-o",
-                tpr,
-            ]
-        )
         for logical, suffix, optional in (
             ("npt_gro", "gro", False),
             ("npt_edr", "edr", False),
@@ -196,7 +170,12 @@ class NptStep(_SimulationStep):
             ctx.register_output(
                 logical, "%s_npt.%s" % (ctx.system.name, suffix), optional=optional
             )
-        self._run_mdrun(ctx, "%s_npt" % ctx.system.name, tpr)
+        grompp = self._grompp(
+            ctx, tpr, self.mdp_file, "-c", gro_in, "-r", gro_in, "-t", cpt_in
+        )
+        mdrun = self._mdrun_args(ctx, "%s_npt" % ctx.system.name, tpr)
+        to = ctx.params.get("timeout")
+        return [("gmx", grompp, None, to), ("gmx", mdrun, None, to)]
 
 
 class MdStep(_SimulationStep):
@@ -205,6 +184,7 @@ class MdStep(_SimulationStep):
     description = "生产 MD 模拟"
     inputs = ["npt_gro", "npt_cpt", "ions_top"]
     param_schema = dict(_SimulationStep.param_schema)
+    mdp_file = "md.mdp"
     outputs = [
         ("md_tpr", "{system}_md.tpr", False),
         ("md_gro", "{system}_md.gro", False),
@@ -214,31 +194,10 @@ class MdStep(_SimulationStep):
         ("md_xtc", "{system}_md.xtc", True),
     ]
 
-    def run(self, ctx) -> None:
+    def build_commands(self, ctx):
         gro_in = ctx.get_input("npt_gro")
         cpt_in = ctx.get_input("npt_cpt")
-        top = ctx.get_input("ions_top")
         tpr = ctx.register_output("md_tpr", "%s_md.tpr" % ctx.system.name)
-        mdp_path, _ = ctx.render_mdp(
-            ctx.params["mdp"], ctx.params["mdp_overrides"], "md.mdp"
-        )
-        ctx.run_gmx(
-            [
-                "grompp",
-                "-maxwarn",
-                str(ctx.params["maxwarn"]),
-                "-f",
-                mdp_path,
-                "-c",
-                gro_in,
-                "-t",
-                cpt_in,
-                "-p",
-                top,
-                "-o",
-                tpr,
-            ]
-        )
         for logical, suffix, optional in (
             ("md_gro", "gro", False),
             ("md_edr", "edr", False),
@@ -249,4 +208,7 @@ class MdStep(_SimulationStep):
             ctx.register_output(
                 logical, "%s_md.%s" % (ctx.system.name, suffix), optional=optional
             )
-        self._run_mdrun(ctx, "%s_md" % ctx.system.name, tpr)
+        grompp = self._grompp(ctx, tpr, self.mdp_file, "-c", gro_in, "-t", cpt_in)
+        mdrun = self._mdrun_args(ctx, "%s_md" % ctx.system.name, tpr)
+        to = ctx.params.get("timeout")
+        return [("gmx", grompp, None, to), ("gmx", mdrun, None, to)]

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import unittest
 from contextlib import redirect_stdout
 from types import SimpleNamespace
 
-from mdkit.cli import cmd_status
+from mdkit.cli import _step_progress, cmd_status
+from mdkit.config import load_workflow
 from mdkit.monitor import RunState, init_status
 
 from tests.helpers import TempWorkspace
@@ -71,6 +73,58 @@ class StatusFilterTests(unittest.TestCase):
         md_pos = text.index("md ")
         env_pos = text.index("env_check")
         self.assertLess(md_pos, env_pos)
+
+    def test_step_progress_parses_mdrun_log(self):
+        wf = load_workflow(
+            self.ws.write(
+                "workflow.yaml",
+                "name: t\nsteps:\n  - step: md\n",
+            )
+        )
+        # step_dir_for -> <run>/caseA/01_md
+        step_dir = os.path.join(self.run_dir, "caseA", "01_md", ".stage")
+        os.makedirs(step_dir)
+        with open(os.path.join(step_dir, "caseA_md.log"), "w") as fh:
+            fh.write(
+                "Step Time\n"
+                "   500        1.000\n"
+                "  1000        2.000\n"
+                "Finished mdrun\n"
+            )
+        with open(os.path.join(step_dir, "md.mdp"), "w") as fh:
+            fh.write("nsteps = 5000000\n")
+        prog = _step_progress(wf, self.run_dir, "caseA", "md")
+        self.assertEqual(prog["step"], 1000)
+        self.assertEqual(prog["time_ps"], 2.0)
+        self.assertEqual(prog["nsteps"], 5000000)
+        self.assertAlmostEqual(prog["percent"], 0.02)
+
+    def test_plan_prints_commands(self):
+        from mdkit.cli import main
+
+        self.ws.add_protein()
+        wf = self.ws.write(
+            "workflow.yaml",
+            "name: t\nsteps:\n  - step: protein_prep\n  - step: box\n",
+        )
+        systems = self.ws.systems_yaml(
+            "  - name: protA\n    protein:\n      file: inputs/protein_A.pdb\n"
+            "    ligands: []\n"
+        )
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main(["plan", "-w", wf, "-s", systems, "--json"])
+        self.assertEqual(code, 0)
+        data = json.loads(out.getvalue())
+        steps = data["systems"][0]["steps"]
+        pdb2gmx_cmd = [
+            c for c in steps[0]["commands"] if "pdb2gmx" in c
+        ]
+        editconf_cmd = [
+            c for c in steps[1]["commands"] if "editconf" in c
+        ]
+        self.assertTrue(pdb2gmx_cmd)
+        self.assertTrue(editconf_cmd)
 
 
 if __name__ == "__main__":
