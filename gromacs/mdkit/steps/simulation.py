@@ -71,6 +71,7 @@ class EmStep(_SimulationStep):
     version = "1.0"
     description = "能量最小化"
     inputs = ["ions_gro", "ions_top"]
+    mdp_file = "minim.mdp"
     param_schema = dict(_SimulationStep.param_schema)
     param_schema["mdp"] = {"type": str, "default": "minim"}
     outputs = [

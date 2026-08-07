@@ -180,7 +180,8 @@ def cmd_plan(args, log) -> int:
                     mdp_dir=workflow.resolve_mdp_dir(_builtin_mdp_dir()),
                     run_dir=work_dir,
                 )
-                for kind, argv, stdin in step.build_commands(plan_ctx):
+                for item in step.build_commands(plan_ctx):
+                    kind, argv, stdin = item[0], item[1], item[2]
                     prefix = "gmx " if kind == "gmx" else ""
                     line = prefix + CommandRunner.quote(argv)
                     if stdin:
@@ -339,7 +340,7 @@ def _step_progress(workflow, run_dir: str, system_name: str, step_name: str):
         in_table = False
         with open(log, "r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
-                if line.startswith("Step") and "Time" in line:
+                if "Step" in line and "Time" in line:
                     in_table = True
                     continue
                 if in_table:

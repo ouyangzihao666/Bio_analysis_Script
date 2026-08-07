@@ -69,7 +69,7 @@ class TrajCorrectStep(Step):
         gro_in = ctx.get_input("md_gro")
         ndx = ctx.get_input("index_ndx")
         xtc = ctx.registry.get("md_xtc")
-        if not xtc or not os.path.isfile(xtc):
+        if not xtc or (not ctx.registry.preview_mode and not os.path.isfile(xtc)):
             return []
         system = ctx.system.name
         method = ctx.params["method"]
