@@ -56,6 +56,8 @@ class Step:
         if value is None and spec.get("default") is None:
             return None
         ptype = spec.get("type")
+        if ptype == "str" and not isinstance(value, str):
+            value = str(value)
         if ptype == "int":
             try:
                 value = int(value)
