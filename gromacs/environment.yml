@@ -1,0 +1,12 @@
+name: mdkit
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pyyaml
+  - ambertools
+  - openbabel
+  - acpype
+  # GROMACS：可使用系统安装的 gmx（推荐，GPU 版），
+  # 或取消下面一行的注释安装 conda-forge CPU 版
+  # - gromacs

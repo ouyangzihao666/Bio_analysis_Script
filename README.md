@@ -14,9 +14,26 @@ mdkit 用 Python 统一编排 GROMACS MD 流程，覆盖纯蛋白、单/多配�
 - Python 3.9+，PyYAML，GROMACS（2021+，推荐 2024+）
 - 配体参数化需要 OpenBabel、AmberTools（antechamber/parmchk2）、acpype；纯蛋白流程仅需 gmx
 
+创建 mdkit 专用 conda 环境（推荐）：
+
+```bash
+conda env create -f gromacs/environment.yml
+conda activate mdkit
+```
+
+或手动创建：
+
+```bash
+conda create -n mdkit -c conda-forge python=3.10 pyyaml ambertools openbabel acpype
+conda activate mdkit
+```
+
+GROMACS 需在 PATH 中：可使用系统安装的 gmx，或 `conda install -c conda-forge gromacs` 安装 CPU 版。
+
 ## 快速开始
 
 ```bash
+conda activate mdkit
 cd gromacs
 export PATH=$PWD/mdkit:$PATH          # 或把 mdkit 目录加入 PATH
 
