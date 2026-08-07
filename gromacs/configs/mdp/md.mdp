@@ -1,0 +1,45 @@
+; md.mdp - mdkit 内置模板（生产 MD）
+; 通过 workflow.yaml 的 mdp_overrides 覆盖参数，本模板不会被修改
+
+integrator              = md
+nsteps                  = 500000
+dt                      = 0.002
+
+nstxout                 = 0
+nstvout                 = 0
+nstfout                 = 0
+nstenergy               = 5000
+nstlog                  = 5000
+nstxout-compressed      = 5000
+compressed-x-grps       = System
+
+continuation            = yes
+constraint_algorithm    = lincs
+constraints             = h-bonds
+lincs_iter              = 1
+lincs_order             = 4
+
+cutoff-scheme           = Verlet
+nstlist                 = 10
+rcoulomb                = 1.0
+rvdw                    = 1.0
+DispCorr                = EnerPres
+
+coulombtype             = PME
+pme_order               = 4
+fourierspacing          = 0.16
+
+tcoupl                  = V-rescale
+tc-grps                 = Protein Non-Protein
+tau_t                   = 0.1  0.1
+ref_t                   = 298  298
+
+pcoupl                  = Parrinello-Rahman
+pcoupltype              = isotropic
+tau_p                   = 2.0
+ref_p                   = 1.0
+compressibility         = 4.5e-5
+
+pbc                     = xyz
+
+gen_vel                 = no

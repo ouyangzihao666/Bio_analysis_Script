@@ -1,0 +1,31 @@
+name: protein-md
+failure_policy: continue
+layout: per_step
+mdp_dir: mdp
+
+steps:
+  - step: env_check
+  - step: protein_prep
+    params:
+      force_field: amber99sb-ildn
+      water_model: tip3p
+  - step: box
+    params:
+      box_type: cubic
+      box_distance: 1.2
+  - step: solvate
+  - step: ions
+    params:
+      positive_ion: NA
+      negative_ion: CL
+      concentration: 0.15
+  - step: em
+  - step: nvt
+  - step: npt
+  - step: md
+  - step: index
+  - step: traj_correct
+    params:
+      method: pbc_mol
+      center_group: Protein
+      output_group: System

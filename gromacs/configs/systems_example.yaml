@@ -1,0 +1,61 @@
+# 体系清单示例：纯蛋白 / 单配体 / 双配体 / 多聚体+多配体
+# 相对路径基于本文件所在目录解析
+work_dir: ./result
+
+systems:
+  - name: protein_A
+    protein:
+      file: inputs/protein_A.pdb
+    ligands: []
+
+  - name: complex_B
+    protein:
+      file: inputs/protein_B.pdb
+    ligands:
+      - name: LIG1
+        file: inputs/ligand_1.sdf
+        charge: 0
+        count: 1
+
+  - name: complex_C
+    protein:
+      file: inputs/protein_C.pdb
+    ligands:
+      - name: LIG1
+        file: inputs/ligand_1.sdf
+        charge: 0
+      - name: LIG2
+        file: inputs/ligand_2.sdf
+        charge: -1
+        count: 2          # LIG2 两拷贝
+    overrides:
+      nvt:
+        mdp_overrides:
+          nsteps: 100000
+
+  - name: multimer_D
+    protein:
+      chains:
+        - inputs/chain_A.pdb
+        - inputs/chain_B.pdb
+    ligands:
+      - name: LIG1
+        file: inputs/ligand_1.sdf
+        charge: 0
+      - name: LIG2
+        file: inputs/ligand_2.sdf
+        charge: 0
+      - name: LIG3
+        file: inputs/ligand_3.sdf
+        charge: 0
+
+  # 手动提供配体拓扑的示例（method: manual）
+  - name: complex_manual
+    protein:
+      file: inputs/protein_D.pdb
+    ligands:
+      - name: MOL
+        method: manual
+        itp_file: inputs/MOL.itp
+        gro_file: inputs/MOL.gro
+        charge: 0

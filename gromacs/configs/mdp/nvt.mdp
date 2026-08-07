@@ -1,0 +1,43 @@
+; nvt.mdp - mdkit 内置模板（NVT 平衡，启用位置限制）
+; 通过 workflow.yaml 的 mdp_overrides 覆盖参数，本模板不会被修改
+
+define                  = -DPOSRES
+
+integrator              = md
+nsteps                  = 50000
+dt                      = 0.002
+
+nstxout                 = 500
+nstvout                 = 500
+nstenergy               = 500
+nstlog                  = 500
+
+continuation            = no
+constraint_algorithm    = lincs
+constraints             = h-bonds
+lincs_iter              = 1
+lincs_order             = 4
+
+cutoff-scheme           = Verlet
+nstlist                 = 10
+rcoulomb                = 1.0
+rvdw                    = 1.0
+DispCorr                = EnerPres
+
+coulombtype             = PME
+pme_order               = 4
+fourierspacing          = 0.16
+
+tcoupl                  = V-rescale
+tc-grps                 = Protein Non-Protein
+tau_t                   = 0.1  0.1
+ref_t                   = 298  298
+
+pcoupl                  = no
+pbc                     = xyz
+
+gen_vel                 = yes
+gen_temp                = 298
+gen_seed                = -1
+
+; 复合物体系可开启：update-groups = Protein_Ligand

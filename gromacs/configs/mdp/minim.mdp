@@ -1,0 +1,20 @@
+; minim.mdp - mdkit 内置模板（能量最小化）
+; 通过 workflow.yaml 的 mdp_overrides 覆盖参数，本模板不会被修改
+; 生产模拟建议将 emtol 改为 10.0
+
+integrator  = steep
+emtol       = 1000.0
+emstep      = 0.01
+nsteps      = 50000
+
+; 非键相互作用
+nstlist         = 1
+cutoff-scheme   = Verlet
+coulombtype     = PME
+rcoulomb        = 1.0
+rvdw            = 1.0
+pbc             = xyz
+
+; PME
+pme_order       = 4
+fourierspacing  = 0.16

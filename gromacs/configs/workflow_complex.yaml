@@ -1,0 +1,38 @@
+name: complex-md
+failure_policy: continue
+layout: per_step
+mdp_dir: mdp
+
+steps:
+  - step: env_check
+    params:
+      tools: [obabel, antechamber, parmchk2, acpype]
+  - step: protein_prep
+    params:
+      force_field: amber99sb-ildn
+      water_model: tip3p
+  - step: ligand_prep
+    params:
+      ligand_force_field: gaff2
+      charge_method: bcc
+  - step: complex_merge
+  - step: box
+    params:
+      box_type: dodecahedron
+      box_distance: 1.0
+  - step: solvate
+  - step: ions
+    params:
+      positive_ion: NA
+      negative_ion: CL
+      concentration: 0.1
+  - step: em
+  - step: nvt
+  - step: npt
+  - step: md
+  - step: index
+  - step: traj_correct
+    params:
+      method: pbc_mol
+      center_group: Protein
+      output_group: System

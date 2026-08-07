@@ -1,0 +1,25 @@
+name: analysis
+failure_policy: continue
+layout: per_step
+
+steps:
+  - step: rmsd
+    params:
+      fit_group: C-alpha
+      cal_group: C-alpha
+  - step: rmsf
+    params:
+      cal_group: Protein
+  - step: gyrate
+    params:
+      cal_group: Protein
+  - step: hbond
+    params:
+      ref_group: Protein
+      target_group: Ligand
+  - step: dssp
+    params:
+      cal_group: Protein
+  - step: outpdb
+    params:
+      out_group: System
