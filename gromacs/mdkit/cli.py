@@ -209,6 +209,7 @@ def cmd_status(args, log) -> int:
         emit(data, True)
         return EXIT_OK
     systems = data.get("systems", {})
+    step_order = _workflow_step_order(data)
     hidden_pending = 0
     shown_any = False
     for name, sys_entry in systems.items():
@@ -224,7 +225,12 @@ def cmd_status(args, log) -> int:
                 continue
         shown_any = True
         print("[%s] %s" % (name, sys_entry.get("status")))
-        for step_name, st in sys_entry.get("steps", {}).items():
+        steps = sys_entry.get("steps", {})
+        ordered = step_order + [k for k in steps if k not in step_order]
+        for step_name in ordered:
+            st = steps.get(step_name)
+            if st is None:
+                continue
             dur = " %.1fs" % st["duration_s"] if st.get("duration_s") is not None else ""
             extra = ""
             if st.get("note"):
@@ -240,6 +246,19 @@ def cmd_status(args, log) -> int:
     if not shown_any and not hidden_pending:
         print("（无体系状态）")
     return EXIT_OK
+
+
+def _workflow_step_order(data: dict):
+    """Return workflow step names in execution order (empty if unknown)."""
+    wf_path = (data.get("run") or {}).get("workflow")
+    if not wf_path or not os.path.isfile(wf_path):
+        return []
+    try:
+        from mdkit.config import load_workflow
+
+        return load_workflow(wf_path).step_names()
+    except Exception:
+        return []
 
 
 def cmd_report(args, log) -> int:

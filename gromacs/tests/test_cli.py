@@ -24,14 +24,19 @@ class StatusFilterTests(unittest.TestCase):
         self.ws.cleanup()
 
     def _make_status(self):
+        wf_path = self.ws.write(
+            "workflow.yaml",
+            "name: t\nsteps:\n  - step: md\n  - step: env_check\n",
+        )
         data = init_status(
             self.run_dir,
             "t",
-            "wf.yaml",
+            wf_path,
             "systems.yaml",
             [SimpleNamespace(name="caseA"), SimpleNamespace(name="caseB")],
             ["env_check", "md"],
         )
+        data["run"]["workflow"] = wf_path
         data["systems"]["caseA"]["steps"]["env_check"]["status"] = "done"
         data["systems"]["caseA"]["steps"]["md"]["status"] = "running"
         data["systems"]["caseA"]["status"] = "running"
@@ -59,6 +64,13 @@ class StatusFilterTests(unittest.TestCase):
         self.assertIn("[caseB]", text)
         self.assertNotIn("[caseA]", text)
         self.assertNotIn("另有", text)
+
+    def test_steps_displayed_in_workflow_order(self):
+        code, text = self._run_status()
+        self.assertEqual(code, 0)
+        md_pos = text.index("md ")
+        env_pos = text.index("env_check")
+        self.assertLess(md_pos, env_pos)
 
 
 if __name__ == "__main__":
