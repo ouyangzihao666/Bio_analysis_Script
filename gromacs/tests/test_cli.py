@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from types import SimpleNamespace
 
 from mdkit.cli import cmd_status
-from mdkit.monitor import init_status
+from mdkit.monitor import RunState, init_status
 
 from tests.helpers import TempWorkspace
 
@@ -35,6 +35,7 @@ class StatusFilterTests(unittest.TestCase):
         data["systems"]["caseA"]["steps"]["env_check"]["status"] = "done"
         data["systems"]["caseA"]["steps"]["md"]["status"] = "running"
         data["systems"]["caseA"]["status"] = "running"
+        RunState(self.run_dir).save(data)
         return data
 
     def _run_status(self, system=None):
