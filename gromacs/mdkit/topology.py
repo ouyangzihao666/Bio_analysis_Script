@@ -32,7 +32,13 @@ def absolutize_includes(src_top: str, dst_top: str) -> str:
                 out.append(line)
             else:
                 resolved = os.path.normpath(os.path.join(src_dir, inc))
-                out.append('#include "%s"' % resolved)
+                if os.path.exists(resolved):
+                    out.append('#include "%s"' % resolved)
+                else:
+                    # Keep relative: GROMACS resolves it via the top file's
+                    # directory or its own data/share directory (e.g. the
+                    # force field dir, which pdb2gmx 2026 does not copy).
+                    out.append(line)
         else:
             out.append(line)
     os.makedirs(os.path.dirname(os.path.abspath(dst_top)), exist_ok=True)

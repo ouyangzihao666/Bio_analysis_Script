@@ -8,7 +8,7 @@ from mdkit.steps.base import Step
 
 class SolvateStep(Step):
     name = "solvate"
-    version = "1.0"
+    version = "1.1"
     description = "gmx solvate 添加溶剂（拓扑副本自包含，模板不被修改）"
     inputs = ["box_gro"]
     outputs = [

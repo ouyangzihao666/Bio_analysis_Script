@@ -8,7 +8,7 @@ from mdkit.steps.base import Step
 
 class ComplexMergeStep(Step):
     name = "complex_merge"
-    version = "1.0"
+    version = "1.1"
     description = "蛋白-配体结构与拓扑合并（支持多配体、多拷贝）"
     inputs = ["processed_gro", "topol_top"]
     outputs = [

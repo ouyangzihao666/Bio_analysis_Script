@@ -8,7 +8,7 @@ from mdkit.steps.base import Step
 
 class IonsStep(Step):
     name = "ions"
-    version = "1.0"
+    version = "1.1"
     description = "grompp + genion 添加离子中和体系"
     inputs = ["solv_gro", "solvated_top"]
     outputs = [
