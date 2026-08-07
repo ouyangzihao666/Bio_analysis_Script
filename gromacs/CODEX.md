@@ -8,6 +8,7 @@
 - 退出码：`0` 成功；`1` 配置/环境错误；`2` 有步骤失败；`130` 用户中断
 - 步骤状态：`pending / running / done / skipped / failed / stale / awaiting_input / interrupted`
 - 体系状态：`pending / running / done / failed / paused / interrupted`
+- `mdkit status --json` 对运行中的 mdrun 注入 `progress`：`{step, time_ps, nsteps, percent}`
 - 运行目录：`work_dir`（来自 systems.yaml `work_dir` 或 `--work-dir`），状态文件 `run_status.json`，锁文件 `.mdkit.lock`
 
 ## 编排闭环
@@ -16,7 +17,7 @@
 # 0. 环境检查（缺失工具会在 JSON 中给出 required/warn 标记）
 mdkit doctor --json
 
-# 1. 规划：确认步骤、目录、参数与 mdp（不产生副作用）
+# 1. 规划：确认步骤、目录、参数、mdp 与每条真实命令（不产生副作用）
 mdkit plan -w configs/workflow_complex.yaml -s configs/systems.yaml --json
 
 # 2. 执行（可与 tmux 结合；同一 run 目录只允许一个执行进程）

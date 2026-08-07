@@ -51,6 +51,68 @@ cd gromacs
 ./mdkit/mdkit mdp-show -w configs/workflow_protein.yaml -s configs/systems_example.yaml --system protein_A nvt
 ```
 
+`mdkit plan` 会按工作流顺序打印每一步将执行的**真实命令**（含 gmx 组选择输入），
+不产生任何副作用；`mdkit status` 对运行中的 mdrun 显示**当前步数/总步数/百分比/时间**
+（例如 `md running step 2780000/5000000 (55.6%), t=5560.0 ps`），`--json` 同步输出 `progress` 字段。
+
+## 提示词模板（交给 AI/Codex 执行）
+
+把下面整段复制给 Codex（或任何支持 shell 的 AI），按实际路径替换尖括号内容即可：
+
+```text
+请使用 /home/user02/bioAnalysis/git/gromacs/mdkit 完成一批 GROMACS MD 模拟。
+
+环境：conda activate bioAna_gmx_user02；把 /home/user02/bioAnalysis/git/gromacs/mdkit 加入 PATH。
+
+任务：
+1. 先运行 mdkit doctor 确认 gmx/obabel/antechamber/acpype/PyYAML 可用；
+2. 运行 mdkit plan -w <workflow.yaml> -s <systems.yaml> --work-dir <输出目录>，
+   向用户展示将执行的每条命令，确认无误；
+3. 用 tmux 启动 mdkit run（每个体系一个独立 --work-dir，便于并行与续跑），
+   输出 --json；
+4. 定期运行 mdkit status <run_dir> --json 检查进度（含 mdrun 当前步数/百分比）；
+5. 若有步骤失败，运行 mdkit report <run_dir> --json 取错误与 stderr 尾部，
+   判断是配置问题还是输入结构问题，向用户说明原因并给出解决方案
+   （例如：多片段合并配体需人工拆分、结构硬冲突需修正姿态），
+   修复后 mdkit retry/run --from 续跑；
+6. 全部完成后运行分析：mdkit run -w workflow_analysis.yaml -s systems.yaml --work-dir <run_dir>。
+```
+
+## 无 AI 人工操作指南
+
+即使没有 AI 参与，也可以按以下顺序完成模拟（每个命令的输出都会明确告诉下一步该做什么）：
+
+```bash
+# 1. 环境与输入检查（缺失工具会明确报错并给出安装命令）
+mdkit doctor
+
+# 2. 预览：确认步骤顺序、参数和每条真实命令（不执行、不建目录）
+mdkit plan -w configs/workflow_complex.yaml -s configs/systems_example.yaml --work-dir ./result
+
+# 3. 执行（失败会继续处理其他体系；每个体系一个独立 work-dir 便于并行）
+mdkit run -w configs/workflow_complex.yaml -s configs/systems_example.yaml \
+          --system complex_C --work-dir ./result/complex_C --json
+
+# 4. 查看进度（md 阶段显示 step/总步数/百分比）
+mdkit status ./result/complex_C
+
+# 5. 出错时看报告，按提示修复后续跑
+mdkit report ./result/complex_C
+mdkit retry ./result/complex_C complex_C <出错的步骤>
+mdkit run -w ... -s ... --system complex_C --work-dir ./result/complex_C --from <步骤>
+
+# 6. 模拟完成后做分析
+mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --work-dir ./result
+```
+
+常见需要人工介入的情况及对应输出：
+
+- 配体拓扑包含多个不连接片段（多个小分子共用同一残基名）：`ligand_prep` 直接失败，
+  错误信息说明"无法自动拆分"，请人工拆分后为每个小分子提供独立 sdf/mol2 文件；
+- 输入结构存在硬冲突（如原子间距 <0.15 nm）：EM 无法收敛、NVT 报 LINCS 错误，
+  `mdkit report` 会给出原子对坐标，需修正配体姿态或结构后重试；
+- `manual_check` 步骤会暂停等待，`mdkit skip ... --reason "确认"` 放行。
+
 ## 配置说明
 
 ### workflow.yaml
