@@ -21,21 +21,15 @@ conda env create -f gromacs/environment.yml
 conda activate mdkit
 ```
 
-或手动创建：
-
-```bash
-conda create -n mdkit -c conda-forge python=3.10 pyyaml ambertools openbabel acpype
-conda activate mdkit
-```
-
 GROMACS 需在 PATH 中：可使用系统安装的 gmx，或 `conda install -c conda-forge gromacs` 安装 CPU 版。
 
 ## 快速开始
 
 ```bash
-conda activate mdkit
 cd gromacs
-export PATH=$PWD/mdkit:$PATH          # 或把 mdkit 目录加入 PATH
+conda env create -f gromacs/environment.yml
+conda activate mdkit
+export PATH=$PWD/mdkit:$PATH          # 把 mdkit 目录加入 PATH
 
 mdkit doctor                           # 环境检查
 mdkit plan -w configs/workflow_protein.yaml -s configs/systems_example.yaml --work-dir ./result
@@ -59,7 +53,7 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 
 | 命令 | 作用 |
 | --- | --- |
-| `skip RUN SYS STEP --reason ... [--output logical=path]` | 人工/Codex 放行（manual_check、失败暂停），可补录输出 |
+| `skip RUN SYS STEP --reason ... [--output logical=path]` | 人工/agent 放行（manual_check、失败暂停），可补录输出 |
 | `retry` / `rollback` | 重置步骤及下游为待执行（rollback 不删文件） |
 | `clean RUN SYS --from STEP --yes` | 删除失效输出（需确认） |
 | `run --from STEP --force` | 断点续跑 / 强制重跑 |
@@ -70,7 +64,7 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 - 事务化：每步在 `.stage` 临时区执行，成功后原子提交到步骤目录；失败保留 `.stage` 供调试
 - 签名溯源：步骤名 + 版本 + 参数哈希（含 mdp 覆盖）+ 输入文件哈希；配置或输入变化自动使下游失效重算
 
-## 提示词模板（交给 AI/Codex）
+## 提示词模板（交给 AI/agent）
 
 ```text
 使用 <gromacs仓库>/gromacs/mdkit 完成 GROMACS MD 模拟：
