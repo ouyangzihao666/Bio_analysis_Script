@@ -66,6 +66,14 @@ class LigandPrepStep(Step):
             n = gro.extract_pdb_residue(
                 ligand.file, ligand.residue, extracted, ligand.name
             )
+            components = gro.count_pdb_residue_components(ligand.file, ligand.residue)
+            if components > 1:
+                raise StepError(
+                    "PDB 残基 %s（配体 %s）包含 %d 个互不连接的分子片段，"
+                    "说明多个小分子共用了同一残基名，无法自动拆分。"
+                    "解决方案：人工拆分后为每个小分子提供独立的 sdf/mol2 文件，"
+                    "或改用不同残基名。" % (ligand.residue, ligand.name, components)
+                )
             ctx.log.info(
                 "已从 PDB 提取配体 %s（残基 %s，%d 原子）",
                 ligand.name,
@@ -80,6 +88,15 @@ class LigandPrepStep(Step):
                 split_mol2 = ctx.path("%s_src.mol2" % ligand.name)
                 mol2.extract_molecule(src, split_mol2, ligand.source_mol_index)
                 src = split_mol2
+            elif fmt == "mol2":
+                blocks = mol2.parse_molecules(src)
+                if len(blocks) == 1 and mol2.count_components_in_block(blocks[0]) > 1:
+                    raise StepError(
+                        "配体 %s 的 mol2 单分子段包含 %d 个互不连接的分子片段，"
+                        "说明多个小分子被合并到了同一名称下，无法自动拆分。"
+                        "解决方案：人工拆分后为每个小分子提供独立的 sdf/mol2 文件。"
+                        % (ligand.name, mol2.count_components_in_block(blocks[0]))
+                    )
         sdf_h = ctx.path("%s_H.sdf" % ligand.name)
         mol2_out = ctx.path("%s.mol2" % ligand.name)
         itp = ctx.register_output(

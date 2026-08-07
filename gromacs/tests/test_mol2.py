@@ -49,6 +49,17 @@ class Mol2Tests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             mol2.extract_molecule(self.path, out, "NOPE")
 
+    def test_count_components_in_block(self):
+        merged = self.ws.write(
+            "merged.mol2",
+            "@<TRIPOS>MOLECULE\nobj01\n5 4 1\nSMALL\n@<TRIPOS>ATOM\n"
+            "1 C1 0 0 0 C.3 1 A 0\n2 C2 0 0 0 C.3 1 A 0\n"
+            "3 O1 0 0 0 O.3 1 A 0\n4 C3 0 0 0 C.3 1 B 0\n5 C4 0 0 0 C.3 1 B 0\n"
+            "@<TRIPOS>BOND\n1 1 2 1\n2 2 3 1\n3 4 5 1\n",
+        )
+        blocks = mol2.parse_molecules(merged)
+        self.assertEqual(mol2.count_components_in_block(blocks[0]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -248,6 +248,51 @@ def extract_pdb_residue(
     return len(atoms)
 
 
+def count_pdb_residue_components(pdb_path: str, resname: str) -> int:
+    """Count connected fragments of one PDB residue using CONECT records."""
+    serials = []
+    with open(pdb_path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith(("ATOM", "HETATM")) and line[17:20].strip().upper() == resname.upper():
+                try:
+                    serials.append(int(line[6:11]))
+                except ValueError:
+                    pass
+    if not serials:
+        raise ConfigError(
+            "PDB 中未找到残基 %s 的原子: %s" % (resname, pdb_path)
+        )
+    serial_set = set(serials)
+    idx = {s: i for i, s in enumerate(serials)}
+    parent = list(range(len(serials)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    with open(pdb_path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if not line.startswith("CONECT"):
+                continue
+            try:
+                fields = [int(line[i : i + 5]) for i in range(6, len(line.rstrip()), 5)]
+            except ValueError:
+                continue
+            if not fields:
+                continue
+            if fields[0] not in serial_set:
+                continue
+            for other in fields[1:]:
+                if other in serial_set:
+                    a, b = idx[fields[0]], idx[other]
+                    ra, rb = find(a), find(b)
+                    if ra != rb:
+                        parent[ra] = rb
+    return len({find(i) for i in range(len(serials))})
+
+
 def _parse_pdb_atom(line: str) -> Dict:
     try:
         return {

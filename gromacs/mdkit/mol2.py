@@ -106,3 +106,39 @@ def extract_molecule(src_path: str, out_path: str, selector) -> Dict:
         )
     write_molecule(out_path, target)
     return target
+
+
+def count_components_in_block(block: Dict) -> int:
+    """Count connected fragments in one mol2 molecule block (via BOND section)."""
+    n = block.get("natoms", 0)
+    if n <= 0:
+        return 0
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    in_bond = False
+    for line in block["lines"]:
+        stripped = line.strip()
+        if stripped.startswith("@<TRIPOS>BOND"):
+            in_bond = True
+            continue
+        if stripped.startswith("@<TRIPOS>"):
+            in_bond = False
+            continue
+        if in_bond:
+            fields = line.split()
+            if len(fields) >= 4:
+                try:
+                    a, b = int(fields[1]) - 1, int(fields[2]) - 1
+                except ValueError:
+                    continue
+                if 0 <= a < n and 0 <= b < n:
+                    ra, rb = find(a), find(b)
+                    if ra != rb:
+                        parent[ra] = rb
+    return len({find(i) for i in range(n)})

@@ -69,6 +69,19 @@ class GroTests(unittest.TestCase):
         self.assertEqual(content.count("ATOM"), 8)
         self.assertIn("TER", content)
 
+    def test_count_pdb_residue_components(self):
+        pdb = self.ws.write(
+            "mix.pdb",
+            "HETATM 101  C   UNK     0       1.000   1.000   1.000  0.00  0.00           C\n"
+            "HETATM 102  C   UNK     0       1.100   1.000   1.000  0.00  0.00           C\n"
+            "HETATM 103  O   UNK     0       2.000   2.000   2.000  0.00  0.00           O\n"
+            "HETATM 104  O   UNK     0       2.100   2.000   2.000  0.00  0.00           O\n"
+            "CONECT 101 102\n"
+            "CONECT 103 104\n"
+            "END\n",
+        )
+        self.assertEqual(gro.count_pdb_residue_components(pdb, "UNK"), 2)
+
 
 def _pdb_chain(chain_id: str) -> str:
     lines = []
