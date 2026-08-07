@@ -53,6 +53,24 @@ class TopologyTests(unittest.TestCase):
         self.assertRegex(content, r"FDME\s+1")
         self.assertRegex(content, r"BDO\s+2")
 
+    def test_rename_molecule_preserves_leading_indent(self):
+        top = self.ws.write(
+            "itp.top",
+            "[ moleculetype ]\n;name            nrexcl\n FDME             3\n",
+        )
+        gro = self.ws.write(
+            "lig.gro",
+            "lig\n    1\n    1  MOL   O1    1   0.494  -1.555   0.403\n"
+            "   2.000   2.000   2.000\n",
+        )
+        topology.rename_molecule(top, gro, "FDME")
+        with open(top, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn(" FDME             3", content)
+        self.assertNotIn("FDMEE", content)
+        with open(gro, encoding="utf-8") as fh:
+            self.assertIn("    1FDME", fh.read())
+
 
 if __name__ == "__main__":
     unittest.main()

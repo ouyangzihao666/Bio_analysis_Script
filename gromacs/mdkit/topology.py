@@ -105,9 +105,15 @@ def rename_molecule(itp_path: str, gro_path: str, new_name: str) -> None:
             ):
                 j += 1
             if j < len(lines):
-                fields = lines[j].split()
+                line = lines[j]
+                fields = line.split()
                 if fields:
-                    lines[j] = new_name + lines[j][len(fields[0]):]
+                    indent_len = len(line) - len(line.lstrip())
+                    lines[j] = (
+                        line[:indent_len]
+                        + new_name
+                        + line[indent_len + len(fields[0]) :]
+                    )
                     renamed = True
             break
     if not renamed:

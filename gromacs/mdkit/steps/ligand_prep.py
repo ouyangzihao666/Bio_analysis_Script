@@ -13,7 +13,7 @@ from mdkit.steps.base import Step
 
 class LigandPrepStep(Step):
     name = "ligand_prep"
-    version = "1.0"
+    version = "1.1"
     description = "配体加氢、电荷计算与 GROMACS 拓扑生成（GAFF2/手动）"
     inputs = []
     outputs = []
