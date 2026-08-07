@@ -55,7 +55,7 @@ class Step:
     def _coerce(self, pname, value, spec):
         if value is None and spec.get("default") is None:
             return None
-        ptype = spec.get("type")
+        ptype = getattr(spec.get("type"), "__name__", str(spec.get("type")))
         if ptype == "str" and not isinstance(value, str):
             value = str(value)
         if ptype == "int":
