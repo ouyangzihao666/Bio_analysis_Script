@@ -136,6 +136,7 @@ def cmd_plan(args, log) -> int:
         registry = FileRegistry(
             work_dir, system, conventions=conventions_with_dirs(workflow.dirs)
         )
+        registry.preview_mode = True
         _register_sources(registry, system)
         steps_out = []
         for spec in workflow.steps:

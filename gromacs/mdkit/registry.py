@@ -42,6 +42,7 @@ class FileRegistry:
         self.system = system
         self._entries: Dict[str, str] = {}
         self._producers: Dict[str, str] = {}
+        self.preview_mode = False
         self.conventions = dict(DEFAULT_CONVENTIONS)
         if conventions:
             self.conventions.update(conventions)
@@ -68,6 +69,8 @@ class FileRegistry:
 
     def require(self, logical: str, for_step: Optional[str] = None) -> str:
         path = self.get(logical)
+        if self.preview_mode and path is not None:
+            return path
         if path is None or not os.path.isfile(path):
             ctx = "步骤 %s " % for_step if for_step else ""
             raise InputError(
@@ -80,6 +83,8 @@ class FileRegistry:
         """Corrected trajectory preferred; falls back to the raw md xtc."""
         for logical in ("corrected_xtc", "md_xtc"):
             path = self.get(logical)
+            if self.preview_mode and path is not None:
+                return path
             if path and os.path.isfile(path):
                 return path
         ctx = "步骤 %s " % for_step if for_step else ""
@@ -92,6 +97,8 @@ class FileRegistry:
         """Complex structure preferred; falls back to the processed protein."""
         for logical in ("complex_gro", "processed_gro"):
             path = self.get(logical)
+            if self.preview_mode and path is not None:
+                return path
             if path and os.path.isfile(path):
                 return path
         ctx = "步骤 %s " % for_step if for_step else ""
