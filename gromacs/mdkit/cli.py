@@ -208,9 +208,21 @@ def cmd_status(args, log) -> int:
     if args.json:
         emit(data, True)
         return EXIT_OK
-    for name, sys_entry in data.get("systems", {}).items():
+    systems = data.get("systems", {})
+    hidden_pending = 0
+    shown_any = False
+    for name, sys_entry in systems.items():
         if args.system and name not in args.system:
             continue
+        if not args.system:
+            active = any(
+                st.get("status") != "pending"
+                for st in sys_entry.get("steps", {}).values()
+            )
+            if not active:
+                hidden_pending += 1
+                continue
+        shown_any = True
         print("[%s] %s" % (name, sys_entry.get("status")))
         for step_name, st in sys_entry.get("steps", {}).items():
             dur = " %.1fs" % st["duration_s"] if st.get("duration_s") is not None else ""
@@ -220,6 +232,13 @@ def cmd_status(args, log) -> int:
             elif st.get("error"):
                 extra = "  (%s)" % st["error"]
             print("  %-16s %-14s%s%s" % (step_name, st.get("status"), dur, extra))
+    if hidden_pending:
+        print(
+            "（另有 %d 个体系在本 run 中未执行，均为 pending；"
+            "使用 --system <名称> 可查看）" % hidden_pending
+        )
+    if not shown_any and not hidden_pending:
+        print("（无体系状态）")
     return EXIT_OK
 
 
