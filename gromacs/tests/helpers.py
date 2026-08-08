@@ -83,11 +83,12 @@ elif sub == "mdrun":
         import time
 
         for i in range(10):
-            print(
-                "step %d, remaining wall clock time: %d s"
-                % ((i + 1) * 100, 1000 - i * 100),
-                flush=True,
+            # 真实 gmx mdrun -v 用 \r 原地覆盖进度行，很少写 \n
+            sys.stdout.write(
+                "\rstep %d, remaining wall clock time: %d s"
+                % ((i + 1) * 100, 1000 - i * 100)
             )
+            sys.stdout.flush()
             time.sleep(0.2)
     if name:
         for ext in ("gro", "edr", "log", "cpt", "xtc"):

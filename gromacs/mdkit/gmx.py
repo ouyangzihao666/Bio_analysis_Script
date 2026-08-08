@@ -8,7 +8,6 @@ import shlex
 import signal
 import subprocess
 import threading
-from collections import deque
 from typing import List, Optional
 
 from mdkit.exceptions import CommandError
@@ -62,7 +61,8 @@ class CommandRunner:
             env_full.update(env)
         to = timeout if timeout is not None else self.timeout
         proc = None
-        tail = deque(maxlen=1000)
+        tail: List[bytes] = []
+        tail_bytes = 0
         timed_out = False
         try:
             proc = subprocess.Popen(
@@ -85,11 +85,23 @@ class CommandRunner:
                 tee_fh = open(tee_path, "ab")
 
             def reader():
+                nonlocal tail_bytes
                 try:
-                    for raw in iter(proc.stdout.readline, b""):
-                        tail.append(raw)
+                    # gmx mdrun -v 的进度行以 \r 原地覆盖、很少写 \n，
+                    # readline()（二进制流只按 \n 切分）会把后续进度一直
+                    # 滞留在缓冲区直到进程结束；这里按原始字节流实时落盘，
+                    # progress.py 读取时 universal newlines 会按 \r 切行。
+                    while True:
+                        chunk = proc.stdout.read1(4096)
+                        if not chunk:
+                            break
+                        tail.append(chunk)
+                        tail_bytes += len(chunk)
+                        while tail_bytes > 65536 and tail:
+                            tail_bytes -= len(tail[0])
+                            tail.pop(0)
                         if tee_fh is not None:
-                            tee_fh.write(raw)
+                            tee_fh.write(chunk)
                             tee_fh.flush()
                 except Exception:
                     pass
