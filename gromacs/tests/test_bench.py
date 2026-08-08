@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from mdkit.batch import parse_slots, slot_gpu
-from mdkit.bench import load_suite
+from mdkit.bench import load_suite, run_bench
 from mdkit.cliargs import merge_cli_options
 from mdkit.exceptions import ConfigError
 
@@ -127,6 +127,37 @@ class BenchIntegrationTests(unittest.TestCase):
             "    slots: [\"-gpu_id 0\", \"-gpu_id 1\"]\n"
             "    systems: [sysA, sysB]\n",
         )
+
+    def _stale_test_dir(self):
+        stale = os.path.join(self.ws.root, "out", "t1")
+        os.makedirs(stale, exist_ok=True)
+        with open(os.path.join(stale, "run_status.json"), "w") as fh:
+            fh.write("{}")
+        return stale
+
+    def test_bench_refuses_stale_test_dir(self):
+        self._stale_test_dir()
+        with self.assertRaises(ConfigError):
+            run_bench(
+                os.path.join(self.ws.root, "workflow.yaml"),
+                os.path.join(self.ws.root, "systems.yaml"),
+                os.path.join(self.ws.root, "out"),
+                os.path.join(self.ws.root, "bench.yaml"),
+                system_filter=["__none__"],
+            )
+
+    def test_bench_fresh_removes_stale_dir(self):
+        stale = self._stale_test_dir()
+        code = run_bench(
+            os.path.join(self.ws.root, "workflow.yaml"),
+            os.path.join(self.ws.root, "systems.yaml"),
+            os.path.join(self.ws.root, "out"),
+            os.path.join(self.ws.root, "bench.yaml"),
+            system_filter=["__none__"],
+            fresh=True,
+        )
+        self.assertEqual(code, 0)
+        self.assertFalse(os.path.exists(stale))
 
     def _fake_bin(self, root):
         """gmx + nvidia-smi + ligand tools in one PATH dir."""

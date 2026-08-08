@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import time
 
@@ -222,7 +223,15 @@ def _summarize(test_name, slots, systems, results, wall_s, samples) -> dict:
     }
 
 
-def run_bench(workflow_path, systems_path, work_dir_base, suite_path, log=None, system_filter=None):
+def run_bench(
+    workflow_path,
+    systems_path,
+    work_dir_base,
+    suite_path,
+    log=None,
+    system_filter=None,
+    fresh=False,
+):
     suite = load_suite(suite_path)
     gpu_ok = gpu_available()
     if log:
@@ -231,6 +240,17 @@ def run_bench(workflow_path, systems_path, work_dir_base, suite_path, log=None, 
     summaries = []
     failed_any = False
     for test in suite["tests"]:
+        test_dir = os.path.join(scheduler.work_dir_base, test["name"])
+        prior = _has_prior_run(test_dir)
+        if prior:
+            if not fresh:
+                raise ConfigError(
+                    "测试目录已包含历史运行: %s；基准要求全新 10ns，"
+                    "请改用新的 --work-dir-base 或加 --fresh 删除重建" % test_dir
+                )
+            if log:
+                log.info("--fresh：删除历史测试目录 %s", test_dir)
+            shutil.rmtree(test_dir, ignore_errors=True)
         systems = test["systems"] or [s.name for s in scheduler.systems_cfg.systems]
         if system_filter:
             systems = [s for s in systems if s in system_filter]
@@ -262,6 +282,15 @@ def run_bench(workflow_path, systems_path, work_dir_base, suite_path, log=None, 
     if log and summaries:
         _print_summary(log, summaries)
     return 2 if failed_any else 0
+
+
+def _has_prior_run(test_dir: str) -> bool:
+    if not os.path.isdir(test_dir):
+        return False
+    for root, _dirs, files in os.walk(test_dir):
+        if "run_status.json" in files:
+            return True
+    return False
 
 
 def _print_summary(log, summaries) -> None:

@@ -285,6 +285,7 @@ def cmd_bench(args, log) -> int:
         args.suite,
         log=log,
         system_filter=args.system,
+        fresh=args.fresh,
     )
 
 
@@ -641,6 +642,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--work-dir-base", required=True)
     p.add_argument("--suite", required=True, help="bench.yaml 套件文件")
     p.add_argument("--system", action="append")
+    p.add_argument(
+        "--fresh",
+        action="store_true",
+        help="删除存在历史运行的测试目录后重建（基准要求全新 10ns）",
+    )
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_bench)
 
