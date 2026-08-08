@@ -7,6 +7,7 @@ Later occurrences of the same option override earlier ones (last wins).
 
 from __future__ import annotations
 
+import shlex
 from typing import List, Optional, Tuple
 
 
@@ -50,3 +51,38 @@ def merge_cli_options(*arg_lists: List[str]) -> List[str]:
         if merged[name] is not None:
             out.append(merged[name])
     return out
+
+
+_GPU_OPTIONS = ("-gpu_id", "-nb", "-pme", "-bonded", "-update", "-dcu", "-gpu_tasks")
+
+
+def slot_missing_ntmpi(slot_args: str) -> Optional[str]:
+    """Explain why gmx 2026 would reject a slot, or None if it is fine.
+
+    When GPUs are used and ``-ntomp`` is set, GROMACS 2026 requires
+    ``-ntmpi`` as well; otherwise mdrun fails with a fatal error.
+    """
+    try:
+        tokens = shlex.split(slot_args)
+    except ValueError:
+        return "槽位参数无法解析: %r" % slot_args
+    if "-ntomp" not in tokens or "-ntmpi" in tokens:
+        return None
+    uses_gpu = False
+    for i, tok in enumerate(tokens):
+        if tok == "-gpu_id":
+            uses_gpu = True
+            break
+        if tok in _GPU_OPTIONS:
+            value = tokens[i + 1] if i + 1 < len(tokens) else ""
+            if value and value not in ("cpu", "none"):
+                uses_gpu = True
+                break
+    if not uses_gpu:
+        return None
+    return (
+        "槽位参数同时使用 GPU（%s）与 -ntomp 但缺少 -ntmpi；"
+        "GROMACS 2026 要求 GPU 模式下指定线程 MPI 秩数，"
+        '请补充 -ntmpi 1，例如 "-ntmpi 1 -ntomp 32 -gpu_id 1 -pinoffset 64"'
+        % slot_args
+    )

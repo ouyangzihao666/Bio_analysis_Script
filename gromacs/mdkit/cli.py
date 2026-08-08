@@ -250,9 +250,10 @@ def cmd_run(args, log) -> int:
 
 
 def cmd_batch(args, log) -> int:
-    from mdkit.batch import SlotScheduler, parse_slots
+    from mdkit.batch import SlotScheduler, parse_slots, validate_slots
 
     slots = parse_slots(args.slot, args.resources)
+    validate_slots(slots)
     scheduler = SlotScheduler(args.workflow, args.systems, args.work_dir_base, log=log)
     names = args.system or [s.name for s in scheduler.systems_cfg.systems]
     results, wall, _test_dir = scheduler.run_test("batch", names, slots)

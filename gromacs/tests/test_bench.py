@@ -12,6 +12,7 @@ from unittest.mock import patch
 from mdkit.batch import parse_slots, slot_gpu
 from mdkit.bench import load_suite
 from mdkit.cliargs import merge_cli_options
+from mdkit.exceptions import ConfigError
 
 from tests.helpers import TempWorkspace, make_fake_ligand_tools
 
@@ -39,6 +40,26 @@ class BenchUnitTests(unittest.TestCase):
         path = self.ws.write("bench.yaml", "tests:\n  - name: x\n    slots: []\n")
         with self.assertRaises(ValueError):
             load_suite(path)
+
+    def test_suite_rejects_gpu_ntomp_without_ntmpi(self):
+        path = self.ws.write(
+            "bench.yaml",
+            "tests:\n"
+            "  - name: t1\n"
+            '    slots: ["-ntomp 32 -gpu_id 1 -pinoffset 64"]\n',
+        )
+        with self.assertRaises(ConfigError):
+            load_suite(path)
+
+    def test_suite_accepts_ntmpi_slots(self):
+        path = self.ws.write(
+            "bench.yaml",
+            "tests:\n"
+            "  - name: t1\n"
+            '    slots: ["-ntmpi 1 -ntomp 32 -gpu_id 1 -pinoffset 64"]\n',
+        )
+        suite = load_suite(path)
+        self.assertEqual(len(suite["tests"][0]["slots"]), 1)
 
     def test_slot_gpu(self):
         self.assertEqual(slot_gpu({"args": "-ntomp 16 -gpu_id 1 -pinoffset 64"}), "1")

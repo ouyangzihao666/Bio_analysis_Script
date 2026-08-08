@@ -10,6 +10,7 @@ import time
 
 from mdkit.batch import SlotScheduler, parse_slots, slot_gpu
 from mdkit.config import load_yaml
+from mdkit.exceptions import ConfigError
 from mdkit.progress import step_progress
 
 
@@ -39,6 +40,10 @@ def load_suite(path: str) -> dict:
                 "systems": t.get("systems") or [],
             }
         )
+    from mdkit.batch import validate_slots
+
+    for t in out:
+        validate_slots(t["slots"])
     return {"tests": out}
 
 

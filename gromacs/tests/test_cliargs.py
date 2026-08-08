@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from mdkit.cliargs import merge_cli_options, parse_options
+from mdkit.cliargs import merge_cli_options, parse_options, slot_missing_ntmpi
 
 
 class CliArgsTests(unittest.TestCase):
@@ -39,6 +39,18 @@ class CliArgsTests(unittest.TestCase):
             merged,
             ["-ntomp", "32", "-ntmpi", "1", "-gpu_id", "0"],
         )
+
+    def test_slot_gpu_ntomp_requires_ntmpi(self):
+        self.assertIsNone(slot_missing_ntmpi(""))
+        self.assertIsNone(slot_missing_ntmpi("-ntomp 32"))
+        self.assertIsNone(slot_missing_ntmpi("-ntmpi 1 -ntomp 32 -gpu_id 1"))
+        self.assertIsNone(slot_missing_ntmpi("-ntomp 16 -nb cpu"))
+        self.assertIsNotNone(slot_missing_ntmpi("-ntomp 32 -gpu_id 0"))
+        problem = slot_missing_ntmpi("-ntomp 32 -gpu_id 1 -pinoffset 64")
+        self.assertIsNotNone(problem)
+        self.assertIn("-ntmpi", problem)
+        problem2 = slot_missing_ntmpi("-ntomp 16 -nb gpu")
+        self.assertIsNotNone(problem2)
 
 
 if __name__ == "__main__":

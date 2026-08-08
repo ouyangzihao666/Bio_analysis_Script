@@ -20,6 +20,7 @@ import yaml
 
 from mdkit.cliargs import merge_cli_options
 from mdkit.config import load_systems, load_workflow, load_yaml
+from mdkit.exceptions import ConfigError
 from mdkit.steps import load_steps
 from mdkit.runner import effective_params
 
@@ -40,6 +41,16 @@ def parse_slots(slot_args, resources_path=None):
     if not slots:
         slots = [{"name": "slot_0", "args": ""}]
     return slots
+
+
+def validate_slots(slots):
+    """Fail fast on slot combinations GROMACS 2026 rejects (exit 1)."""
+    from mdkit.cliargs import slot_missing_ntmpi
+
+    for s in slots:
+        problem = slot_missing_ntmpi(s.get("args", ""))
+        if problem:
+            raise ConfigError("槽位 %s: %s" % (s.get("name", "?"), problem))
 
 
 def slot_gpu(slot) -> str:
