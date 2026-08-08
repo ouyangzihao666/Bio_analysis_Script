@@ -24,9 +24,8 @@ class ComplexMergeStep(Step):
     def run(self, ctx) -> None:
         system = ctx.system
         if not system.has_ligands:
-            raise ValueError(
-                "complex_merge 步骤要求体系包含配体；纯蛋白流程不应包含该步骤"
-            )
+            ctx.log.info("无配体，complex_merge 跳过（结构/拓扑沿用蛋白预处理结果）")
+            return
         protein_gro = self.get_input_paths(ctx)["processed_gro"]
         protein_top = self.get_input_paths(ctx)["topol_top"]
         ligand_gros = []

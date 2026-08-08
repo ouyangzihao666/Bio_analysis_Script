@@ -60,9 +60,13 @@ class Runner:
         for system in self.systems_cfg.systems:
             for key in system.overrides:
                 if self.workflow.step_by_name(key) is None:
-                    raise ConfigError(
-                        "体系 %s 的 overrides 包含未知步骤: %s" % (system.name, key)
-                    )
+                    # systems.yaml 是共享数据：不属于当前工作流的 overrides 忽略。
+                    if self.log:
+                        self.log.warning(
+                            "体系 %s 的 overrides 包含当前工作流不存在的步骤 %s，已忽略",
+                            system.name,
+                            key,
+                        )
 
     def _step_dir(self, system_name: str, spec) -> str:
         return step_dir_for(self.workflow, self.work_dir, system_name, spec)

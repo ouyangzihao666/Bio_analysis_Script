@@ -39,7 +39,19 @@ mdkit clean result <system> --from <step> --yes   # 删除失效输出，谨慎�
 
 # 7. 断点续跑 / 强制重跑
 mdkit run -w ... -s ... --from <step> --force
+
+# 8. 并发运行（资源槽位：槽位参数为 mdrun 额外参数，原样透传）
+mdkit batch -w ... -s ... --work-dir-base ./batch \
+  --slot "-ntomp 32 -gpu_id 1 -pinoffset 64" \
+  --slot "-ntmpi 1 -ntomp 32 -gpu_id 0"
+
+# 9. 基准测试（串行测试套件 + 3-7ns 窗口采样 GPU/CPU）
+mdkit bench -w ... -s ... --work-dir-base ./bench --suite bench.yaml
 ```
+
+`mdkit batch/bench` 的槽位参数与用户 extra_args 经**选项级去重合并**（gmx 不接受重复选项），
+槽位按空闲状态分配，并发数 = 槽位数。bench 输出每个测试的 `benchmark.json`
+（per-GPU 平均利用率、per-体系平均 CPU%、墙钟）。
 
 ## 安全规则（Codex 必须遵守）
 

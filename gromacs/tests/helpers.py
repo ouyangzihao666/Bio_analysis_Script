@@ -132,7 +132,7 @@ def make_fake_gmx() -> str:
 def make_fake_ligand_tools() -> str:
     """Fake obabel / antechamber / acpype binaries; returns dir path."""
     d = tempfile.mkdtemp(prefix="mdkit_fakelig_")
-    for tool in ("obabel", "antechamber", "acpype"):
+    for tool in ("obabel", "antechamber", "parmchk2", "acpype"):
         path = os.path.join(d, tool)
         with open(path, "w") as fh:
             fh.write(FAKE_LIGAND_TOOLS)

@@ -85,6 +85,21 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             Runner(wf, FakeCfg(), "/tmp/x", log=None)
 
+    def test_override_for_unknown_step_is_ignored(self):
+        self.ws.add_protein()
+        wf = load_workflow(self.ws.write("workflow.yaml", WORKFLOW))
+        syscfg = load_systems(
+            self.ws.systems_yaml(
+                "  - name: prot\n    protein:\n      file: inputs/protein_A.pdb\n"
+                "    ligands: []\n"
+                "    overrides:\n      hbond: {target_group: Protein}\n"
+            )
+        )
+        from mdkit.runner import Runner
+
+        # 不应抛错：hbond 不在当前工作流中，只警告后忽略。
+        Runner(wf, syscfg, "/tmp/x", log=None)
+
     def test_systems_ok_protein_only(self):
         self.ws.add_protein()
         path = self.ws.systems_yaml(

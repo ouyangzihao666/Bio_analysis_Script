@@ -29,6 +29,7 @@ from mdkit.runner import (
 )
 from mdkit.steps import load_steps
 from mdkit.gmx import CommandRunner
+from mdkit.progress import load_run_workflow, step_progress
 from mdkit.steps.base import StepContext
 
 
@@ -248,6 +249,44 @@ def cmd_run(args, log) -> int:
     return code
 
 
+def cmd_batch(args, log) -> int:
+    from mdkit.batch import SlotScheduler, parse_slots
+
+    slots = parse_slots(args.slot, args.resources)
+    scheduler = SlotScheduler(args.workflow, args.systems, args.work_dir_base, log=log)
+    names = args.system or [s.name for s in scheduler.systems_cfg.systems]
+    results, wall, _test_dir = scheduler.run_test("batch", names, slots)
+    failed = any(r["exit"] != 0 for r in results.values())
+    if args.json:
+        emit(
+            {
+                "work_dir_base": args.work_dir_base,
+                "wall_s": wall,
+                "results": results,
+                "exit": EXIT_RUN_FAILED if failed else EXIT_OK,
+            },
+            True,
+        )
+    else:
+        log.info("batch 完成，墙钟 %.1fs", wall)
+        for name, r in results.items():
+            log.info("  %s: exit=%s slot=%s", name, r["exit"], r["slot"])
+    return EXIT_RUN_FAILED if failed else EXIT_OK
+
+
+def cmd_bench(args, log) -> int:
+    from mdkit.bench import run_bench
+
+    return run_bench(
+        args.workflow,
+        args.systems,
+        args.work_dir_base,
+        args.suite,
+        log=log,
+        system_filter=args.system,
+    )
+
+
 def cmd_status(args, log) -> int:
     data = RunState(args.run_dir).load()
     if not data:
@@ -313,66 +352,11 @@ def _workflow_step_order(data: dict):
 
 
 def _load_run_workflow(data: dict):
-    wf_path = (data.get("run") or {}).get("workflow")
-    if not wf_path or not os.path.isfile(wf_path):
-        return None
-    try:
-        from mdkit.config import load_workflow
-
-        return load_workflow(wf_path)
-    except Exception:
-        return None
+    return load_run_workflow(data)
 
 
 def _step_progress(workflow, run_dir: str, system_name: str, step_name: str):
-    """Current mdrun step/time from the live log, plus nsteps for a percentage."""
-    try:
-        from mdkit.runner import step_dir_for
-
-        spec = workflow.step_by_name(step_name)
-        if spec is None:
-            return None
-        step_dir = step_dir_for(workflow, run_dir, system_name, spec)
-        log = os.path.join(step_dir, ".stage", "%s_%s.log" % (system_name, step_name))
-        if not os.path.isfile(log):
-            return None
-        last = None
-        in_table = False
-        with open(log, "r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                if "Step" in line and "Time" in line:
-                    in_table = True
-                    continue
-                if in_table:
-                    m = re.match(r"^\s*(\d+)\s+([0-9.eE+-]+)\s*$", line)
-                    if m:
-                        last = (int(m.group(1)), float(m.group(2)))
-                    else:
-                        in_table = False
-        if not last:
-            return None
-        nsteps = None
-        for name in (
-            "%s.mdp" % step_name,
-            "minim.mdp",
-            "nvt.mdp",
-            "npt.mdp",
-            "md.mdp",
-            "ions.mdp",
-        ):
-            p = os.path.join(step_dir, ".stage", name)
-            if os.path.isfile(p):
-                with open(p, "r", encoding="utf-8", errors="replace") as fh:
-                    for line in fh:
-                        m = re.match(r"^\s*nsteps\s*=\s*(\d+)", line)
-                        if m:
-                            nsteps = int(m.group(1))
-                if nsteps:
-                    break
-        percent = (100.0 * last[0] / nsteps) if nsteps else None
-        return {"step": last[0], "time_ps": last[1], "nsteps": nsteps, "percent": percent}
-    except Exception:
-        return None
+    return step_progress(workflow, run_dir, system_name, step_name)
 
 
 def _with_progress(data: dict, run_dir: str) -> dict:
@@ -569,6 +553,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--system", action="append")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("batch", help="按资源槽位并发运行多个体系")
+    p.add_argument("-w", "--workflow", required=True)
+    p.add_argument("-s", "--systems", required=True)
+    p.add_argument("--work-dir-base", required=True)
+    p.add_argument("--slot", action="append", default=[], help="槽位额外参数串（可重复）")
+    p.add_argument("--resources", help="槽位资源 YAML")
+    p.add_argument("--system", action="append")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_batch)
+
+    p = sub.add_parser("bench", help="基准测试套件（串行测试 + GPU/CPU 采样）")
+    p.add_argument("-w", "--workflow", required=True)
+    p.add_argument("-s", "--systems", required=True)
+    p.add_argument("--work-dir-base", required=True)
+    p.add_argument("--suite", required=True, help="bench.yaml 套件文件")
+    p.add_argument("--system", action="append")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_bench)
 
     p = sub.add_parser("report", help="汇总报告与错误清单")
     p.add_argument("run_dir")

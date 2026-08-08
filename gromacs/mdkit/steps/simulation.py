@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shlex
 
+from mdkit.cliargs import merge_cli_options
 from mdkit.steps.base import Step
 
 
@@ -33,21 +34,19 @@ class _SimulationStep(Step):
         return self.mdp_file
 
     def _mdrun_args(self, ctx, deffnm: str, tpr: str) -> list:
-        args = ["mdrun", "-deffnm", deffnm, "-s", tpr]
+        base = ["mdrun", "-deffnm", deffnm, "-s", tpr]
         if ctx.params["verbose"]:
-            args.append("-v")
+            base.append("-v")
         if ctx.params.get("nt"):
-            args += ["-nt", str(ctx.params["nt"])]
+            base += ["-nt", str(ctx.params["nt"])]
         if ctx.params.get("gpu_id"):
-            args += ["-gpu_id", ctx.params["gpu_id"]]
+            base += ["-gpu_id", ctx.params["gpu_id"]]
         if ctx.params.get("rdd"):
-            args += ["-rdd", ctx.params["rdd"]]
+            base += ["-rdd", ctx.params["rdd"]]
         extra = ctx.params.get("extra_args") or ""
-        if extra:
-            args += shlex.split(extra)
         if ctx.params.get("continue_cpt"):
-            args += ["-cpi", ctx.params["continue_cpt"]]
-        return args
+            base += ["-cpi", ctx.params["continue_cpt"]]
+        return merge_cli_options(base, shlex.split(extra))
 
     def _grompp(self, ctx, tpr, mdp_name, *extra_pairs):
         argv = [

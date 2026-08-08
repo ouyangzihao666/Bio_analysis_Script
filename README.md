@@ -57,6 +57,13 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 | `retry` / `rollback` | 重置步骤及下游为待执行（rollback 不删文件） |
 | `clean RUN SYS --from STEP --yes` | 删除失效输出（需确认） |
 | `run --from STEP --force` | 断点续跑 / 强制重跑 |
+| `batch` | 按资源槽位并发运行多个体系（槽位参数原样透传，选项级去重） |
+| `bench` | 基准测试套件：串行多测试、槽位并发、3–7ns 窗口采样 GPU/CPU 占用 |
+
+示例：`mdkit bench -w workflow.yaml -s systems.yaml --work-dir-base ./bench --suite bench.yaml`。
+`bench.yaml` 中每个测试定义 `name`、`slots`（mdrun 额外参数串，如
+`"-ntomp 32 -gpu_id 1 -pinoffset 64"`）与 `systems`；同一 systems.yaml 可复用于不同工作流，
+overrides 中不属于当前工作流的步骤会被忽略。
 
 ## 一致性机制
 
