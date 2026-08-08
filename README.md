@@ -46,6 +46,7 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 
 - `workflow.yaml`：`failure_policy: continue|stop`（默认 continue）、`layout: per_step|flat`、可选 `stage_name`（临时工作区目录名，默认 `.stage`）、`mdp_dir`、`steps` 列表；`defaults` / 步骤 `params` / 体系 `overrides` 三层参数合并。
 - `systems.yaml`：体系清单；蛋白支持 `file` 或 `chains`（多聚体）；配体支持 `sdf/mol2/pdb`、`residue`（从蛋白 PDB 提取）、`names`（多分子 mol2 拆分）、`count`（多拷贝）、`method: manual`（自带 itp/gro）。
+- `systems.yaml` 顶层资源：`slots` 为可复用模板池（`0: "-ntmpi 1 -ntomp 32 -gpu_id 0"`，缺省单模板空参数），`concurrency` 为并发上限（默认 = 模板数，可大于模板数复用模板）；每体系 `slot: N` 为显式模板绑定（缺省任意空闲模板）。
 - mdp：内置模板（ions/minim/nvt/npt/md），`mdp_overrides` 覆盖渲染，模板不被修改。
 
 `failure_policy` 为 workflow 级，作用于本次 run 的所有体系；`stop` 时整个 run 终止（当前体系剩余步骤与后续体系不再执行），不影响其他并行 run。
@@ -60,11 +61,38 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 | `run --from STEP --force` | 断点续跑 / 强制重跑 |
 | `batch` | 按资源槽位并发运行多个体系（槽位参数原样透传，选项级去重） |
 | `bench` | 基准测试套件：串行多测试、槽位并发、3–7ns 窗口采样 GPU/CPU 占用 |
+| `ctl` | 统一控制入口：状态/队列/执行/干预（详见下方批量队列） |
+| `watch` | 常驻执行器：消费 queue.json 自动启动/重跑；或监督单个 run 目录 |
 
 示例：`mdkit bench -w workflow.yaml -s systems.yaml --work-dir-base ./bench --suite bench.yaml`。
 `bench.yaml` 中每个测试定义 `name`、`slots`（mdrun 额外参数串，如
 `"-ntomp 32 -gpu_id 1 -pinoffset 64"`）与 `systems`；同一 systems.yaml 可复用于不同工作流，
 overrides 中不属于当前工作流的步骤会被忽略。
+
+## 批量队列（ctl / watch）
+
+批量 MD（多体系并发 + 人工干预自动补跑）需要准备的文件：
+
+1. `workflow.yaml`（步骤与参数，可用 `configs/` 示例改 `mdp_dir`）
+2. `systems.yaml`（体系清单 + 顶层 `slots`/`concurrency` + 每体系可选 `slot` 绑定）
+3. 输入结构文件（蛋白 PDB、配体 sdf/mol2/pdb，路径在 systems.yaml 引用）
+4. mdp 模板（默认内置 `configs/mdp/`，自定义用 `mdp_dir` 指向）
+5. 环境：mdkit conda 环境 + PATH 里的 gmx；配体体系还需 obabel/antechamber/parmchk2/acpype
+
+```bash
+mdkit ctl init -w configs/workflow_complex.yaml -s configs/systems.yaml --work-dir-base ./batch
+mdkit ctl exec start -q ./batch/queue.json
+mdkit ctl status -q ./batch/queue.json            # 查看进度/模板占用
+mdkit ctl retry -q ./batch/queue.json <system>    # 修复输入后重排（默认 checkpoint 续跑）
+mdkit ctl retry -q ./batch/queue.json <system> --force   # 从头重跑
+mdkit ctl queue hold/release -q ./batch/queue.json --system <system>
+mdkit ctl exec stop -q ./batch/queue.json
+```
+
+`queue.json` 由 `ctl init` 生成在 `--work-dir-base/`，运行期由 `ctl` 与 `watch`
+（`.mdkit.queue.lock` 互斥）原子读写，不要手改。watch 默认 3 分钟轮询一次状态、
+30 分钟修复等待（`--interval`/`--repair-timeout` 可调，单位分钟）；退出码
+0=全部完成、2=修复超时/失败、130=人工停止。
 
 ## 一致性机制
 

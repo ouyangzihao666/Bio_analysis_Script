@@ -76,9 +76,16 @@ elif sub == "genion":
             fh.write("NA 1\n")
 elif sub == "mdrun":
     name = val("-deffnm")
+    fail_file = os.environ.get("FAKE_GMX_FAIL_FILE")
+    if fail_file and os.path.isfile(fail_file):
+        sys.stderr.write("fake gmx failure (flag file)\n")
+        sys.exit(7)
     if name and name.endswith("_md") and "mdrun" in fail.split(","):
         sys.stderr.write("fake gmx failure for mdrun\n")
         sys.exit(7)
+    if name:
+        for ext in ("gro", "edr", "log", "cpt", "xtc"):
+            open(name + "." + ext, "w").write(SYSTEM_GRO if ext == "gro" else "x")
     if os.environ.get("FAKE_GMX_SLOW_MD") and name and name.endswith("_md"):
         import time
 
@@ -90,9 +97,6 @@ elif sub == "mdrun":
             )
             sys.stdout.flush()
             time.sleep(0.2)
-    if name:
-        for ext in ("gro", "edr", "log", "cpt", "xtc"):
-            open(name + "." + ext, "w").write(SYSTEM_GRO if ext == "gro" else "x")
 sys.exit(0)
 '''
 

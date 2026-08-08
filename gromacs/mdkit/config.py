@@ -223,6 +223,13 @@ class System:
         _require(isinstance(self.overrides, dict), "体系 %s overrides 必须是映射" % self.name)
         for k, v in self.overrides.items():
             _require(isinstance(v, dict), "体系 %s overrides[%s] 必须是映射" % (self.name, k))
+        slot = data.get("slot")
+        if slot is not None:
+            _require(
+                isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0,
+                "体系 %s slot 必须是非负整数" % self.name,
+            )
+        self.slot: Optional[int] = slot
         self.review_notes: List[str] = []
         self.ligands = _expand_multi_mol2(self.ligands, base_dir, self.review_notes)
         for ligand in self.ligands:
@@ -246,6 +253,7 @@ class System:
                         "chains": self.protein.chains if self.protein.is_multimer else None},
             "ligands": [l.as_dict() for l in self.ligands],
             "overrides": self.overrides,
+            "slot": self.slot,
         }
 
 
@@ -256,6 +264,18 @@ class SystemsConfig:
         self.path = os.path.abspath(path)
         self.base_dir = os.path.dirname(self.path)
         self.work_dir: Optional[str] = data.get("work_dir")
+        self.slots: List[Dict[str, Any]] = _parse_slots(data.get("slots"))
+        raw_concurrency = data.get("concurrency")
+        if raw_concurrency is None:
+            self.concurrency = len(self.slots) if self.slots else 1
+        else:
+            _require(
+                isinstance(raw_concurrency, int)
+                and not isinstance(raw_concurrency, bool)
+                and raw_concurrency >= 1,
+                "concurrency 必须是不小于 1 的整数",
+            )
+            self.concurrency = raw_concurrency
         raw_systems = data.get("systems")
         _require(isinstance(raw_systems, list) and raw_systems, "systems 必须是非空列表")
         self.systems: List[System] = [
@@ -263,6 +283,23 @@ class SystemsConfig:
         ]
         names = [s.name for s in self.systems]
         _require(len(set(names)) == len(names), "体系名重复")
+        slot_keys = {s["index"] for s in self.slots}
+        for system in self.systems:
+            if system.slot is not None and system.slot not in slot_keys:
+                raise ConfigError(
+                    "体系 %s 绑定的槽位 %s 不存在；可用槽位: %s"
+                    % (system.name, system.slot, sorted(slot_keys) or "（缺省单槽位 0）")
+                )
+
+    def template_args(self, index: int) -> str:
+        """Return the mdrun args string for a slot template index."""
+        for s in self.slots:
+            if s["index"] == index:
+                return s["args"]
+        raise ConfigError("槽位不存在: %s" % index)
+
+    def slot_exists(self, index: int) -> bool:
+        return any(s["index"] == index for s in self.slots)
 
     def resolve_work_dir(self, cli_value: Optional[str] = None) -> str:
         if cli_value:
@@ -281,6 +318,23 @@ class SystemsConfig:
             if s.name == name:
                 return s
         return None
+
+
+def _parse_slots(raw) -> List[Dict[str, Any]]:
+    """Parse the top-level ``slots`` map: ``{0: "-ntmpi 1 ...", 1: "..."}``."""
+    if raw is None:
+        return [{"index": 0, "args": ""}]
+    _require(isinstance(raw, dict), "slots 必须是映射（数字键:mdrun 参数串）")
+    out = []
+    for key, value in raw.items():
+        _require(
+            isinstance(key, int) and not isinstance(key, bool) and key >= 0,
+            "slots 的键必须是非负整数: %r" % (key,),
+        )
+        _require(isinstance(value, str), "slots[%s] 的值必须是字符串（mdrun 参数串）" % key)
+        out.append({"index": key, "args": value})
+    out.sort(key=lambda s: s["index"])
+    return out
 
 
 def _resolve_path(value: str, base_dir: str) -> str:

@@ -61,6 +61,64 @@ def slot_gpu(slot) -> str:
     return None
 
 
+def write_temp_systems(workflow, system, merged_extra: str, path: str,
+                       extra_overrides: dict = None) -> None:
+    """Write a one-system systems.yaml with slot args baked into overrides.
+
+    ``extra_overrides`` is an optional ``{step_name: {param: value}}`` map
+    merged on top of the system's own overrides (e.g. continue_cpt for
+    checkpoint resume after a graceful interrupt).
+    """
+    ligands = []
+    for lig in system.ligands:
+        entry = {
+            "name": lig.name,
+            "file": lig.file,
+            "charge": lig.charge,
+            "count": lig.count,
+            "method": lig.method,
+        }
+        if lig.residue:
+            entry["residue"] = lig.residue
+        if lig.format != "auto":
+            entry["format"] = lig.format
+        if lig.names:
+            entry["names"] = lig.names
+        if lig.itp_file:
+            entry["itp_file"] = lig.itp_file
+        if lig.gro_file:
+            entry["gro_file"] = lig.gro_file
+        if not lig.split:
+            entry["split"] = False
+        if lig.source_mol_index is not None:
+            entry["_source_mol_index"] = lig.source_mol_index
+        ligands.append(entry)
+    protein = (
+        {"file": system.protein.chains[0]}
+        if not system.protein.is_multimer
+        else {"chains": system.protein.chains}
+    )
+    overrides = copy.deepcopy(system.overrides)
+    for step_name in ("em", "nvt", "npt", "md"):
+        if workflow.step_by_name(step_name):
+            overrides.setdefault(step_name, {})["extra_args"] = merged_extra
+    for step_name, extra in (extra_overrides or {}).items():
+        overrides.setdefault(step_name, {}).update(extra)
+    data = {
+        "systems": [
+            {
+                "name": system.name,
+                "protein": protein,
+                "ligands": ligands,
+                "overrides": overrides,
+            }
+        ]
+    }
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
+
+
 class SlotScheduler:
     """Runs a set of systems concurrently, one per free slot."""
 
@@ -81,51 +139,7 @@ class SlotScheduler:
         return shlex.join(merged)
 
     def _write_temp_systems(self, system, merged_extra, path) -> None:
-        # Rebuild the system entry from resolved absolute paths so the temp
-        # file is independent of its own location.
-        ligands = []
-        for lig in system.ligands:
-            entry = {
-                "name": lig.name,
-                "file": lig.file,
-                "charge": lig.charge,
-                "count": lig.count,
-                "method": lig.method,
-            }
-            if lig.residue:
-                entry["residue"] = lig.residue
-            if lig.format != "auto":
-                entry["format"] = lig.format
-            if lig.names:
-                entry["names"] = lig.names
-            if lig.itp_file:
-                entry["itp_file"] = lig.itp_file
-            if lig.gro_file:
-                entry["gro_file"] = lig.gro_file
-            if not lig.split:
-                entry["split"] = False
-            # 展开后的配体依赖 mol2 分子段索引定位结构，必须透传给子进程
-            if lig.source_mol_index is not None:
-                entry["_source_mol_index"] = lig.source_mol_index
-            ligands.append(entry)
-        protein = (
-            {"file": system.protein.chains[0]}
-            if not system.protein.is_multimer
-            else {"chains": system.protein.chains}
-        )
-        overrides = copy.deepcopy(system.overrides)
-        # 槽位参数作用于所有 mdrun 步骤（em/nvt/npt/md），避免只注入 md。
-        for step_name in ("em", "nvt", "npt", "md"):
-            if self.workflow.step_by_name(step_name):
-                overrides.setdefault(step_name, {})["extra_args"] = merged_extra
-        data = {
-            "systems": [
-                {"name": system.name, "protein": protein, "ligands": ligands, "overrides": overrides}
-            ]
-        }
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as fh:
-            yaml.safe_dump(data, fh, allow_unicode=True, sort_keys=False)
+        write_temp_systems(self.workflow, system, merged_extra, path)
 
     def _spawn(self, system_name, slot, test_dir):
         system = self.systems_cfg.system_by_name(system_name)

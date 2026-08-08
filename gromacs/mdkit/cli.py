@@ -289,6 +289,20 @@ def cmd_bench(args, log) -> int:
     )
 
 
+def cmd_watch(args, log) -> int:
+    from mdkit.watch import run_watch
+
+    return run_watch(
+        queue_path=getattr(args, "queue", None),
+        run_dir=args.run_dir,
+        interval_min=args.interval,
+        repair_timeout_min=args.repair_timeout,
+        max_wait_min=args.max_wait,
+        log=log,
+        json_events=args.json,
+    )
+
+
 def cmd_status(args, log) -> int:
     data, run_dir = _resolve_status(args.run_dir)
     if isinstance(data, list):
@@ -588,6 +602,10 @@ def _builtin_mdp_dir() -> str:
     return os.path.join(os.path.dirname(here), "configs", "mdp")
 
 
+def _add_queue_arg(pp):
+    pp.add_argument("-q", "--queue", required=True, help="queue.json 路径")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mdkit",
@@ -649,6 +667,122 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_bench)
+
+    # ---- unified control entry: mdkit ctl ---------------------------
+    from mdkit.ctl import (
+        ctl_clean,
+        ctl_exec,
+        ctl_force,
+        ctl_init,
+        ctl_queue,
+        ctl_retry,
+        ctl_rollback,
+        ctl_skip,
+        ctl_status,
+    )
+
+    p = sub.add_parser("ctl", help="统一控制入口（状态/队列/执行/干预）")
+    ctl_sub = p.add_subparsers(dest="ctl_action", required=True)
+
+    pp = ctl_sub.add_parser("status", help="队列状态")
+    _add_queue_arg(pp)
+    pp.add_argument("--json", action="store_true")
+    pp.set_defaults(func=ctl_status)
+
+    pp = ctl_sub.add_parser("init", help="创建队列")
+    pp.add_argument("-w", "--workflow", required=True)
+    pp.add_argument("-s", "--systems", required=True)
+    pp.add_argument("--work-dir-base", required=True)
+    pp.add_argument("--concurrency", type=int, default=None)
+    pp.add_argument("--slot", action="append", default=[], help="追加 mdrun 参数串（数字自动续编）")
+    pp.add_argument("--system", action="append")
+    pp.add_argument("--json", action="store_true")
+    pp.set_defaults(func=ctl_init)
+
+    pp = ctl_sub.add_parser("queue", help="队列控制")
+    qsub = pp.add_subparsers(dest="queue_action", required=True)
+    for qa in ("add", "remove", "hold", "release"):
+        qp = qsub.add_parser(qa)
+        _add_queue_arg(qp)
+        qp.add_argument("--system", action="append", required=True)
+        qp.add_argument("--json", action="store_true")
+        qp.set_defaults(func=ctl_queue)
+    qp = qsub.add_parser("list")
+    _add_queue_arg(qp)
+    qp.add_argument("--json", action="store_true")
+    qp.set_defaults(func=ctl_queue)
+    qp = qsub.add_parser("sync")
+    _add_queue_arg(qp)
+    qp.add_argument("--json", action="store_true")
+    qp.set_defaults(func=ctl_queue)
+
+    pp = ctl_sub.add_parser("exec", help="执行控制")
+    esub = pp.add_subparsers(dest="exec_action", required=True)
+    ep = esub.add_parser("start", help="启动 watch")
+    _add_queue_arg(ep)
+    ep.add_argument("--interval", type=float, default=3.0, help="轮询间隔（分钟，默认 3）")
+    ep.add_argument("--repair-timeout", type=float, default=30.0, help="修复等待（分钟，默认 30，0=不限时）")
+    ep.add_argument("--max-wait", type=float, default=None, help="最大运行时长（分钟）")
+    ep.add_argument("--json", action="store_true")
+    ep.set_defaults(func=ctl_exec)
+    ep = esub.add_parser("stop")
+    _add_queue_arg(ep)
+    ep.add_argument("--json", action="store_true")
+    ep.set_defaults(func=ctl_exec)
+    ep = esub.add_parser("status")
+    _add_queue_arg(ep)
+    ep.add_argument("--json", action="store_true")
+    ep.set_defaults(func=ctl_exec)
+
+    pp = ctl_sub.add_parser("retry", help="重置体系步骤为待执行")
+    _add_queue_arg(pp)
+    pp.add_argument("system")
+    pp.add_argument("step", nargs="?", default=None)
+    pp.add_argument("--force", action="store_true", help="中断当前 step 后从头重跑（不续跑）")
+    pp.add_argument("--json", action="store_true")
+    pp.set_defaults(func=ctl_retry)
+
+    pp = ctl_sub.add_parser("force", help="等同 retry --force：中断当前 step 后从头重跑")
+    _add_queue_arg(pp)
+    pp.add_argument("system")
+    pp.add_argument("step", nargs="?", default=None)
+    pp.add_argument("--json", action="store_true")
+    pp.set_defaults(func=ctl_force)
+
+    pp = ctl_sub.add_parser("skip", help="放行步骤（manual_check/修复确认）")
+    _add_queue_arg(pp)
+    pp.add_argument("system")
+    pp.add_argument("step")
+    pp.add_argument("--reason", default="")
+    pp.add_argument("--output", action="append", default=[], help="logical=path")
+    pp.add_argument("--json", action="store_true")
+    pp.set_defaults(func=ctl_skip)
+
+    pp = ctl_sub.add_parser("rollback", help="回退步骤并失效下游")
+    _add_queue_arg(pp)
+    pp.add_argument("system")
+    pp.add_argument("step", nargs="?", default=None)
+    pp.add_argument("--force", action="store_true")
+    pp.add_argument("--json", action="store_true")
+    pp.set_defaults(func=ctl_rollback)
+
+    pp = ctl_sub.add_parser("clean", help="删除失效输出（需 --yes）")
+    _add_queue_arg(pp)
+    pp.add_argument("system")
+    pp.add_argument("--from", dest="from_step")
+    pp.add_argument("--yes", action="store_true")
+    pp.add_argument("--json", action="store_true")
+    pp.set_defaults(func=ctl_clean)
+
+    # ---- long-running executor --------------------------------------
+    p = sub.add_parser("watch", help="常驻执行器（消费队列或监督单 run）")
+    p.add_argument("--queue", help="queue.json 路径")
+    p.add_argument("run_dir", nargs="?", help="单 run 目录（与 --queue 二选一）")
+    p.add_argument("--interval", type=float, default=3.0, help="轮询间隔（分钟，默认 3）")
+    p.add_argument("--repair-timeout", type=float, default=30.0, help="修复等待（分钟，默认 30，0=不限时）")
+    p.add_argument("--max-wait", type=float, default=None, help="最大运行时长（分钟，到期未完成退出 2）")
+    p.add_argument("--json", action="store_true", help="输出 JSON 事件行")
+    p.set_defaults(func=cmd_watch)
 
     p = sub.add_parser("report", help="汇总报告与错误清单")
     p.add_argument("run_dir")
