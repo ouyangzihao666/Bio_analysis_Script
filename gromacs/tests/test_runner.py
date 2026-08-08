@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
+import time
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -11,6 +14,7 @@ from unittest.mock import patch
 
 from mdkit.config import load_systems, load_workflow
 from mdkit.monitor import RunState
+from mdkit.progress import step_progress
 from mdkit.runner import Runner, cmd_clean, cmd_retry, cmd_skip
 
 from tests.helpers import TempWorkspace, make_fake_gmx, with_fake_path
@@ -138,6 +142,61 @@ steps:
         self.assertEqual(code2, 0)
         self.assertEqual(data2["systems"]["protA"]["status"], "done")
         self.assertEqual(data2["systems"]["protA"]["steps"]["md"]["status"], "done")
+
+    def test_mdrun_live_tee_reports_remaining_time(self):
+        systems_path = self._one_system()
+        workflow = load_workflow(self.workflow_path)
+        systems_cfg = load_systems(systems_path)
+        work_dir = systems_cfg.resolve_work_dir()
+        env = {**self.env, "FAKE_GMX_SLOW_MD": "1"}
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "mdkit",
+                "run",
+                "-w",
+                self.workflow_path,
+                "-s",
+                systems_path,
+            ],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            stage_out = os.path.join(
+                work_dir,
+                "protA",
+                "09_md",
+                ".stage",
+                "protA_md.mdrun.out",
+            )
+            deadline = time.time() + 30
+            while time.time() < deadline and not os.path.isfile(stage_out):
+                time.sleep(0.1)
+            self.assertTrue(
+                os.path.isfile(stage_out), "mdrun tee 文件未生成: %s" % stage_out
+            )
+            with open(stage_out, encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn("remaining wall clock time", content)
+
+            prog = None
+            while time.time() < deadline:
+                if proc.poll() is not None:
+                    break
+                prog = step_progress(workflow, work_dir, "protA", "md")
+                if prog and prog.get("remaining"):
+                    break
+                time.sleep(0.1)
+            self.assertIsNotNone(prog, "step_progress 未返回 remaining")
+            self.assertIn("remaining wall clock time", prog["remaining"])
+            self.assertIn("step 100", prog["remaining"])
+        finally:
+            rc = proc.wait(timeout=60)
+        self.assertEqual(rc, 0, "mdkit run 子进程非零退出: %s" % rc)
 
     def test_manual_check_pause_and_skip(self):
         self.ws.write(

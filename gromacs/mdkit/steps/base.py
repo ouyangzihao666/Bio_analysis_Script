@@ -106,7 +106,12 @@ class Step:
             kind, argv, stdin = item[0], item[1], item[2]
             timeout = item[3] if len(item) > 3 else None
             if kind == "gmx":
-                ctx.run_gmx(argv, stdin_text=stdin, timeout=timeout)
+                ctx.run_gmx(
+                    argv,
+                    stdin_text=stdin,
+                    timeout=timeout,
+                    tee_path=_mdrun_tee(ctx, argv),
+                )
             else:
                 ctx.run_cmd(argv, stdin_text=stdin, timeout=timeout)
 
@@ -200,13 +205,37 @@ class StepContext:
             shutil.rmtree(target)
 
     # -- commands --------------------------------------------------------
-    def run_gmx(self, args: List[str], stdin_text: Optional[str] = None, timeout=None):
+    def run_gmx(
+        self,
+        args: List[str],
+        stdin_text: Optional[str] = None,
+        timeout=None,
+        tee_path: Optional[str] = None,
+    ):
         self.commands.append("gmx " + " ".join(args))
-        return self.cmd.run_gmx(args, stdin_text=stdin_text, cwd=self.cwd, timeout=timeout)
+        return self.cmd.run_gmx(
+            args,
+            stdin_text=stdin_text,
+            cwd=self.cwd,
+            timeout=timeout,
+            tee_path=tee_path,
+        )
 
-    def run_cmd(self, argv: List[str], stdin_text: Optional[str] = None, timeout=None):
+    def run_cmd(
+        self,
+        argv: List[str],
+        stdin_text: Optional[str] = None,
+        timeout=None,
+        tee_path: Optional[str] = None,
+    ):
         self.commands.append(" ".join(argv))
-        return self.cmd.run(argv, stdin_text=stdin_text, cwd=self.cwd, timeout=timeout)
+        return self.cmd.run(
+            argv,
+            stdin_text=stdin_text,
+            cwd=self.cwd,
+            timeout=timeout,
+            tee_path=tee_path,
+        )
 
     # -- mdp -------------------------------------------------------------
     def render_mdp(self, mdp_spec: str, overrides: Optional[dict], rel: str):
@@ -217,3 +246,11 @@ class StepContext:
     # -- outputs ---------------------------------------------------------
     def outputs_map(self):
         return dict(self._outputs), dict(self._optional)
+
+
+def _mdrun_tee(ctx: "StepContext", argv: List[str]) -> Optional[str]:
+    """Live mdrun -v output goes to <stage>/<deffnm>.mdrun.out for status."""
+    if argv and argv[0] == "mdrun" and "-deffnm" in argv:
+        deffnm = argv[argv.index("-deffnm") + 1]
+        return ctx.path(deffnm + ".mdrun.out")
+    return None

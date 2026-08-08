@@ -79,6 +79,16 @@ elif sub == "mdrun":
     if name and name.endswith("_md") and "mdrun" in fail.split(","):
         sys.stderr.write("fake gmx failure for mdrun\n")
         sys.exit(7)
+    if os.environ.get("FAKE_GMX_SLOW_MD") and name and name.endswith("_md"):
+        import time
+
+        for i in range(10):
+            print(
+                "step %d, remaining wall clock time: %d s"
+                % ((i + 1) * 100, 1000 - i * 100),
+                flush=True,
+            )
+            time.sleep(0.2)
     if name:
         for ext in ("gro", "edr", "log", "cpt", "xtc"):
             open(name + "." + ext, "w").write(SYSTEM_GRO if ext == "gro" else "x")

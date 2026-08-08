@@ -28,9 +28,31 @@ def step_progress(workflow, run_dir: str, system_name: str, step_name: str):
         if spec is None:
             return None
         step_dir = step_dir_for(workflow, run_dir, system_name, spec)
+        remaining = None
+        out = os.path.join(
+            step_dir, ".stage", "%s_%s.mdrun.out" % (system_name, step_name)
+        )
+        if os.path.isfile(out):
+            with open(out, "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    low = line.lower()
+                    if (
+                        "remaining wall clock time" in low
+                        or "will finish" in low
+                        or "finish" in low
+                    ):
+                        remaining = line.strip()
         log = os.path.join(step_dir, ".stage", "%s_%s.log" % (system_name, step_name))
         if not os.path.isfile(log):
-            return None
+            if remaining is None:
+                return None
+            return {
+                "step": None,
+                "time_ps": None,
+                "nsteps": None,
+                "percent": None,
+                "remaining": remaining,
+            }
         last = None
         in_table = False
         with open(log, "r", encoding="utf-8", errors="replace") as fh:
@@ -45,7 +67,15 @@ def step_progress(workflow, run_dir: str, system_name: str, step_name: str):
                     else:
                         in_table = False
         if not last:
-            return None
+            if remaining is None:
+                return None
+            return {
+                "step": None,
+                "time_ps": None,
+                "nsteps": None,
+                "percent": None,
+                "remaining": remaining,
+            }
         nsteps = None
         for name in (
             "%s.mdp" % step_name,
@@ -70,6 +100,7 @@ def step_progress(workflow, run_dir: str, system_name: str, step_name: str):
             "time_ps": last[1],
             "nsteps": nsteps,
             "percent": percent,
+            "remaining": remaining,
         }
     except Exception:
         return None

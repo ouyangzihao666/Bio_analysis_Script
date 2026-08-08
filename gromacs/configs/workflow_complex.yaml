@@ -27,9 +27,17 @@ steps:
       negative_ion: CL
       concentration: 0.1
   - step: em
+    params:
+      verbose: true
   - step: nvt
+    params:
+      verbose: true
   - step: npt
+    params:
+      verbose: true
   - step: md
+    params:
+      verbose: true
   - step: index
   - step: traj_correct
     params:

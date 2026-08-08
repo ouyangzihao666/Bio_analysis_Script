@@ -7,6 +7,8 @@ import logging
 import shlex
 import signal
 import subprocess
+import threading
+from collections import deque
 from typing import List, Optional
 
 from mdkit.exceptions import CommandError
@@ -42,6 +44,7 @@ class CommandRunner:
         cwd: Optional[str] = None,
         env: Optional[dict] = None,
         timeout: Optional[float] = None,
+        tee_path: Optional[str] = None,
     ):
         """Run argv; returns dict with returncode/output_tail.
 
@@ -59,7 +62,8 @@ class CommandRunner:
             env_full.update(env)
         to = timeout if timeout is not None else self.timeout
         proc = None
-        stdout = None
+        tail = deque(maxlen=1000)
+        timed_out = False
         try:
             proc = subprocess.Popen(
                 argv,
@@ -71,25 +75,43 @@ class CommandRunner:
                 start_new_session=True,
             )
             self._current_proc = proc
-            stdout, _ = proc.communicate(
-                input=stdin_text.encode("utf-8") if stdin_text is not None else None,
-                timeout=to,
-            )
-        except subprocess.TimeoutExpired:
-            self.interrupt()
+            if stdin_text is not None:
+                proc.stdin.write(stdin_text.encode("utf-8"))
+                proc.stdin.close()
+
+            tee_fh = None
+            if tee_path:
+                os.makedirs(os.path.dirname(os.path.abspath(tee_path)), exist_ok=True)
+                tee_fh = open(tee_path, "ab")
+
+            def reader():
+                try:
+                    for raw in iter(proc.stdout.readline, b""):
+                        tail.append(raw)
+                        if tee_fh is not None:
+                            tee_fh.write(raw)
+                            tee_fh.flush()
+                except Exception:
+                    pass
+                finally:
+                    if tee_fh is not None:
+                        try:
+                            tee_fh.close()
+                        except Exception:
+                            pass
+
+            thread = threading.Thread(target=reader, daemon=True)
+            thread.start()
             try:
-                proc.communicate(timeout=5)
-            except Exception:
-                pass
-            self._current_proc = None
-            tail = _tail(stdout) if stdout else ""
-            raise CommandError(
-                "命令超时（%ss）: %s" % (to, display),
-                argv=argv,
-                exit_code=None,
-                output_tail=tail,
-                timed_out=True,
-            )
+                proc.wait(timeout=to)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                self.interrupt()
+                try:
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
+            thread.join(timeout=5)
         except OSError as exc:
             self._current_proc = None
             raise CommandError(
@@ -98,17 +120,31 @@ class CommandRunner:
             )
         finally:
             self._current_proc = None
-        output = stdout.decode("utf-8", errors="replace") if stdout else ""
-        tail = _tail(output.encode("utf-8", errors="replace"))
-        self.log.debug("CMD output tail:\n%s", tail)
+            if proc is not None:
+                for stream in (getattr(proc, "stdin", None), getattr(proc, "stdout", None)):
+                    if stream is not None:
+                        try:
+                            stream.close()
+                        except Exception:
+                            pass
+        output_tail = _tail(b"".join(tail))
+        self.log.debug("CMD output tail:\n%s", output_tail)
+        if timed_out:
+            raise CommandError(
+                "命令超时（%ss）: %s" % (to, display),
+                argv=argv,
+                exit_code=None,
+                output_tail=output_tail,
+                timed_out=True,
+            )
         if proc.returncode != 0:
             raise CommandError(
                 "命令失败（退出码 %s）: %s" % (proc.returncode, display),
                 argv=argv,
                 exit_code=proc.returncode,
-                output_tail=tail,
+                output_tail=output_tail,
             )
-        return {"returncode": 0, "output_tail": tail, "command": display}
+        return {"returncode": 0, "output_tail": output_tail, "command": display}
 
     def run_gmx(
         self,
@@ -116,8 +152,15 @@ class CommandRunner:
         stdin_text: Optional[str] = None,
         cwd: Optional[str] = None,
         timeout: Optional[float] = None,
+        tee_path: Optional[str] = None,
     ):
-        return self.run(["gmx"] + args, stdin_text=stdin_text, cwd=cwd, timeout=timeout)
+        return self.run(
+            ["gmx"] + args,
+            stdin_text=stdin_text,
+            cwd=cwd,
+            timeout=timeout,
+            tee_path=tee_path,
+        )
 
 
 def _tail(data: bytes, limit: int = 20000) -> str:

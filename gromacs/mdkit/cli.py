@@ -390,12 +390,21 @@ def _print_single_run(data: dict, run_dir: str, system_filter=None) -> None:
             if st.get("status") == "running" and workflow:
                 p = _step_progress(workflow, run_dir, name, step_name)
                 if p:
-                    prog = "   step %s/%s (%.1f%%), t=%.1f ps" % (
-                        p["step"],
-                        p["nsteps"] or "?",
-                        p["percent"] or 0.0,
-                        p["time_ps"],
-                    )
+                    parts = []
+                    if p.get("step") is not None:
+                        parts.append(
+                            "step %s/%s (%.1f%%), t=%.1f ps"
+                            % (
+                                p["step"],
+                                p["nsteps"] or "?",
+                                p["percent"] or 0.0,
+                                p["time_ps"],
+                            )
+                        )
+                    if p.get("remaining"):
+                        parts.append(p["remaining"])
+                    if parts:
+                        prog = "   " + " | ".join(parts)
             print("  %-16s %-14s%s%s%s" % (step_name, st.get("status"), dur, extra, prog))
     if hidden_pending:
         print(

@@ -149,11 +149,14 @@ class StatusFilterTests(unittest.TestCase):
             )
         with open(os.path.join(step_dir, "md.mdp"), "w") as fh:
             fh.write("nsteps = 5000000\n")
+        with open(os.path.join(step_dir, "caseA_md.mdrun.out"), "w") as fh:
+            fh.write("step 1000, remaining wall clock time:     0 s\n")
         prog = _step_progress(wf, self.run_dir, "caseA", "md")
         self.assertEqual(prog["step"], 1000)
         self.assertEqual(prog["time_ps"], 2.0)
         self.assertEqual(prog["nsteps"], 5000000)
         self.assertAlmostEqual(prog["percent"], 0.02)
+        self.assertEqual(prog["remaining"], "step 1000, remaining wall clock time:     0 s")
 
     def test_plan_prints_commands(self):
         from mdkit.cli import main
