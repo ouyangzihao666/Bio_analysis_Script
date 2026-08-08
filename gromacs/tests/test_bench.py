@@ -9,12 +9,13 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from mdkit.batch import parse_slots, slot_gpu
+from mdkit.batch import SlotScheduler, parse_slots, slot_gpu
 from mdkit.bench import load_suite, run_bench
 from mdkit.cliargs import merge_cli_options
+from mdkit.config import load_systems
 from mdkit.exceptions import ConfigError
 
-from tests.helpers import TempWorkspace, make_fake_ligand_tools
+from tests.helpers import MULTI_MOL2, TempWorkspace, make_fake_ligand_tools
 
 
 class BenchUnitTests(unittest.TestCase):
@@ -72,6 +73,48 @@ class BenchUnitTests(unittest.TestCase):
         )
         self.assertEqual(merged.count("-ntomp"), 1)
         self.assertEqual(merged[merged.index("-ntomp") + 1], "32")
+
+    def test_temp_systems_keeps_source_mol_index(self):
+        # 多分子 mol2 按 names 展开后，每个配体依赖 _source_mol_index
+        # 定位自己的分子段；临时 systems.yaml 必须透传，否则子进程会
+        # 把整个 mol2 交给 obabel，只取到第一个分子（结构错配）。
+        mol2_path = self.ws.write("inputs/two_ligs.mol2", MULTI_MOL2)
+        systems_path = self.ws.write(
+            "systems.yaml",
+            "work_dir: ./result\nsystems:\n"
+            "  - name: sysX\n"
+            "    protein: {file: inputs/protein_A.pdb}\n"
+            "    ligands:\n"
+            "      - {name: FME, file: %s, charge: 0, names: [FME, BDO]}\n"
+            % mol2_path,
+        )
+        self.ws.add_protein("protein_A.pdb")
+        self.ws.write(
+            "workflow.yaml",
+            "name: t\nsteps:\n  - step: md\n",
+        )
+        scheduler = SlotScheduler(
+            os.path.join(self.ws.root, "workflow.yaml"),
+            systems_path,
+            os.path.join(self.ws.root, "out"),
+        )
+        systems_cfg = load_systems(systems_path)
+        system = systems_cfg.system_by_name("sysX")
+        self.assertEqual(len(system.ligands), 2)
+        self.assertEqual(
+            [lig.source_mol_index for lig in system.ligands], [0, 1]
+        )
+        tmp = os.path.join(self.ws.root, "tmp_sys.yaml")
+        scheduler._write_temp_systems(system, "", tmp)
+        with open(tmp, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("_source_mol_index: 0", text)
+        self.assertIn("_source_mol_index: 1", text)
+        # 重新加载临时文件后，索引应仍然存在
+        reloaded = load_systems(tmp).system_by_name("sysX")
+        self.assertEqual(
+            [lig.source_mol_index for lig in reloaded.ligands], [0, 1]
+        )
 
 
 class BenchIntegrationTests(unittest.TestCase):

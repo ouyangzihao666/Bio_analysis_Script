@@ -104,6 +104,9 @@ class SlotScheduler:
                 entry["gro_file"] = lig.gro_file
             if not lig.split:
                 entry["split"] = False
+            # 展开后的配体依赖 mol2 分子段索引定位结构，必须透传给子进程
+            if lig.source_mol_index is not None:
+                entry["_source_mol_index"] = lig.source_mol_index
             ligands.append(entry)
         protein = (
             {"file": system.protein.chains[0]}
