@@ -163,6 +163,14 @@ class BenchIntegrationTests(unittest.TestCase):
         self.assertIn("1", data["per_gpu"])
         self.assertEqual(data["per_gpu"]["0"]["avg_util_pct"], 55.0)
         self.assertEqual(data["per_gpu"]["1"]["avg_util_pct"], 77.0)
+        # 槽位参数应注入所有 mdrun 步骤（em/nvt/npt/md），而不只是 md。
+        import yaml
+
+        with open(os.path.join(base, "t1", ".batch", "sysA.yaml"), encoding="utf-8") as fh:
+            tmp = yaml.safe_load(fh)
+        ov = tmp["systems"][0]["overrides"]
+        for step in ("em", "nvt", "npt", "md"):
+            self.assertEqual(ov[step]["extra_args"], "-gpu_id 0")
 
 
 _FAKE_GMX_BENCH = r'''#!/usr/bin/env python3

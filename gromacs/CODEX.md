@@ -25,6 +25,7 @@ mdkit run -w configs/workflow_complex.yaml -s configs/systems.yaml --json
 
 # 3. 轮询状态（状态文件原子写入，可安全并发读）
 mdkit status result --json
+#    也可指向父目录（bench 的 out/<测试>/），自动发现所有子 run 并显示
 
 # 4. 失败时取报告：出错步骤、命令、退出码、stderr 尾部
 mdkit report result --json

@@ -40,6 +40,7 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 ```
 
 `plan` 按工作流顺序打印每一步将执行的**真实命令**（无副作用）；`status` 对运行中的 mdrun 显示 `step 2780000/5000000 (55.6%), t=5560.0 ps`，`--json` 输出含 `progress`。
+`status` 也可直接指向 run 的父目录（如 `bench` 的 `out/<测试>/`），会自动发现其下所有 run 并逐个显示。
 
 ## 配置
 

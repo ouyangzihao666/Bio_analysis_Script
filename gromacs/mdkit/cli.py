@@ -288,21 +288,83 @@ def cmd_bench(args, log) -> int:
 
 
 def cmd_status(args, log) -> int:
-    data = RunState(args.run_dir).load()
-    if not data:
-        raise ConfigError("run 状态不存在: %s" % args.run_dir)
-    if args.json:
-        emit(_with_progress(data, args.run_dir), True)
+    data, run_dir = _resolve_status(args.run_dir)
+    if isinstance(data, list):
+        # 给的是父目录：发现多个 run，逐个显示。
+        base = os.path.abspath(args.run_dir)
+        if args.json:
+            emit(
+                {
+                    "run_dirs": {
+                        os.path.relpath(d, base): _with_progress(RunState(d).load(), d)
+                        for d in data
+                    }
+                },
+                True,
+            )
+            return EXIT_OK
+        for d in data:
+            print("===== %s =====" % os.path.relpath(d, base))
+            _print_single_run(RunState(d).load(), d, args.system)
         return EXIT_OK
+    if args.json:
+        emit(_with_progress(data, run_dir), True)
+        return EXIT_OK
+    _print_single_run(data, run_dir, args.system)
+    return EXIT_OK
+
+
+def _resolve_status(run_dir):
+    """Return (data, run_dir) for a single run, or (run_dirs_list, base)."""
+    direct = os.path.join(run_dir, "run_status.json")
+    if os.path.isfile(direct):
+        data = RunState(run_dir).load()
+        if not data:
+            raise ConfigError("run 状态不存在: %s" % run_dir)
+        return data, run_dir
+    found = _discover_run_dirs(run_dir)
+    if not found:
+        raise ConfigError("run 状态不存在: %s" % run_dir)
+    if len(found) == 1:
+        data = RunState(found[0]).load()
+        if not data:
+            raise ConfigError("run 状态不存在: %s" % found[0])
+        return data, found[0]
+    return found, run_dir
+
+
+def _discover_run_dirs(root: str, maxdepth: int = 4) -> list:
+    """Find dirs containing run_status.json under root (depth-limited)."""
+    root = os.path.abspath(root)
+    if not os.path.isdir(root):
+        return []
+    root_depth = root.count(os.sep)
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        depth = dirpath.count(os.sep) - root_depth
+        if depth > maxdepth:
+            dirnames[:] = []
+            continue
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in (".stage", ".batch", ".git", "__pycache__", "inputs")
+        ]
+        if "run_status.json" in filenames:
+            found.append(dirpath)
+    return sorted(found)
+
+
+def _print_single_run(data: dict, run_dir: str, system_filter=None) -> None:
     systems = data.get("systems", {})
     workflow = _load_run_workflow(data)
     step_order = workflow.step_names() if workflow else []
     hidden_pending = 0
     shown_any = False
     for name, sys_entry in systems.items():
-        if args.system and name not in args.system:
+        if system_filter and name not in system_filter:
             continue
-        if not args.system:
+        if not system_filter:
             active = any(
                 st.get("status") != "pending"
                 for st in sys_entry.get("steps", {}).values()
@@ -326,7 +388,7 @@ def cmd_status(args, log) -> int:
                 extra = "  (%s)" % st["error"]
             prog = ""
             if st.get("status") == "running" and workflow:
-                p = _step_progress(workflow, args.run_dir, name, step_name)
+                p = _step_progress(workflow, run_dir, name, step_name)
                 if p:
                     prog = "   step %s/%s (%.1f%%), t=%.1f ps" % (
                         p["step"],
@@ -342,7 +404,6 @@ def cmd_status(args, log) -> int:
         )
     if not shown_any and not hidden_pending:
         print("（无体系状态）")
-    return EXIT_OK
 
 
 def _workflow_step_order(data: dict):

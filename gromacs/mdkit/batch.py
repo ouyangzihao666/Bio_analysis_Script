@@ -100,7 +100,10 @@ class SlotScheduler:
             else {"chains": system.protein.chains}
         )
         overrides = copy.deepcopy(system.overrides)
-        overrides.setdefault("md", {})["extra_args"] = merged_extra
+        # 槽位参数作用于所有 mdrun 步骤（em/nvt/npt/md），避免只注入 md。
+        for step_name in ("em", "nvt", "npt", "md"):
+            if self.workflow.step_by_name(step_name):
+                overrides.setdefault(step_name, {})["extra_args"] = merged_extra
         data = {
             "systems": [
                 {"name": system.name, "protein": protein, "ligands": ligands, "overrides": overrides}

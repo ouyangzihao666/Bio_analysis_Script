@@ -74,6 +74,62 @@ class StatusFilterTests(unittest.TestCase):
         env_pos = text.index("env_check")
         self.assertLess(md_pos, env_pos)
 
+    def test_status_discovers_parent_run_dirs(self):
+        wf_path = self.ws.write(
+            "workflow.yaml",
+            "name: t\nsteps:\n  - step: env_check\n  - step: md\n",
+        )
+        parent = os.path.join(self.ws.root, "bench", "test1")
+        for name in ("sysA", "sysB"):
+            d = os.path.join(parent, name)
+            os.makedirs(d)
+            data = init_status(
+                d,
+                "t",
+                wf_path,
+                "systems.yaml",
+                [SimpleNamespace(name=name)],
+                ["env_check", "md"],
+            )
+            data["systems"][name]["steps"]["env_check"]["status"] = "done"
+            data["systems"][name]["steps"]["md"]["status"] = "running"
+            data["systems"][name]["status"] = "running"
+            RunState(d).save(data)
+        out = io.StringIO()
+        args = SimpleNamespace(run_dir=os.path.join(self.ws.root, "bench", "test1"), system=None, json=False)
+        with redirect_stdout(out):
+            code = cmd_status(args, None)
+        self.assertEqual(code, 0)
+        text = out.getvalue()
+        self.assertIn("sysA", text)
+        self.assertIn("sysB", text)
+
+    def test_status_json_parent_wraps_runs(self):
+        wf_path = self.ws.write(
+            "workflow.yaml",
+            "name: t\nsteps:\n  - step: env_check\n  - step: md\n",
+        )
+        parent = os.path.join(self.ws.root, "bench2")
+        for name in ("sysA", "sysB"):
+            d = os.path.join(parent, name)
+            os.makedirs(d)
+            data = init_status(
+                d,
+                "t",
+                wf_path,
+                "systems.yaml",
+                [SimpleNamespace(name=name)],
+                ["env_check", "md"],
+            )
+            RunState(d).save(data)
+        out = io.StringIO()
+        args = SimpleNamespace(run_dir=parent, system=None, json=True)
+        with redirect_stdout(out):
+            code = cmd_status(args, None)
+        self.assertEqual(code, 0)
+        payload = json.loads(out.getvalue())
+        self.assertIn("run_dirs", payload)
+
     def test_step_progress_parses_mdrun_log(self):
         wf = load_workflow(
             self.ws.write(
