@@ -96,7 +96,7 @@ elif sub == "mdrun":
                 % ((i + 1) * 100, 1000 - i * 100)
             )
             sys.stdout.flush()
-            time.sleep(0.2)
+            time.sleep(0.3)
 sys.exit(0)
 '''
 

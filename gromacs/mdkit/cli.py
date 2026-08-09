@@ -306,7 +306,7 @@ def cmd_watch(args, log) -> int:
 def cmd_status(args, log) -> int:
     data, run_dir = _resolve_status(args.run_dir)
     if isinstance(data, list):
-        # 给的是父目录：发现多个 run，逐个显示。
+        # 给的是父目录：发现多个 run。
         base = os.path.abspath(args.run_dir)
         if args.json:
             emit(
@@ -319,15 +319,74 @@ def cmd_status(args, log) -> int:
                 True,
             )
             return EXIT_OK
-        for d in data:
-            print("===== %s =====" % os.path.relpath(d, base))
-            _print_single_run(RunState(d).load(), d, args.system, detail=args.detail)
+        if args.detail:
+            for d in data:
+                print("===== %s =====" % os.path.relpath(d, base))
+                _print_single_run(RunState(d).load(), d, args.system, detail=True)
+        else:
+            _print_grouped_compact(base, data, args.system)
         return EXIT_OK
     if args.json:
         emit(_with_progress(data, run_dir), True)
         return EXIT_OK
     _print_single_run(data, run_dir, args.system, detail=args.detail)
     return EXIT_OK
+
+
+_STATUS_ORDER = ("running", "done", "failed", "paused", "interrupted", "pending")
+
+
+def _status_summary(statuses) -> str:
+    counts = {}
+    for status in statuses:
+        counts[status] = counts.get(status, 0) + 1
+    return "汇总: " + ", ".join(
+        "%s %d" % (status, counts[status])
+        for status in _STATUS_ORDER
+        if counts.get(status)
+    )
+
+
+def _compact_line(name: str, status: str, sys_entry: dict, workflow, run_dir: str,
+                  step_order: list) -> str:
+    extra = _compact_detail(sys_entry, workflow, run_dir, name, step_order, status)
+    return "[%s] %s%s" % (name, status, ("  " + extra) if extra else "")
+
+
+def _print_grouped_compact(base: str, run_dirs: list, system_filter=None) -> None:
+    """Compact parent-dir view: group runs by their parent directory."""
+    groups = {}
+    for d in run_dirs:
+        parent = os.path.abspath(os.path.dirname(d))
+        key = None if parent == os.path.abspath(base) else os.path.relpath(parent, base)
+        groups.setdefault(key, []).append((d, RunState(d).load()))
+    keys = ([None] if None in groups else []) + sorted(k for k in groups if k is not None)
+    all_statuses = []
+    for key in keys:
+        for _d, data in groups[key]:
+            for sys_entry in data.get("systems", {}).values():
+                all_statuses.append(sys_entry.get("status", "pending"))
+    if len(groups) > 1 and all_statuses:
+        print(_status_summary(all_statuses))
+    for key in keys:
+        runs = groups[key]
+        if key is not None:
+            print("===== %s =====" % key)
+        shown = []
+        statuses = []
+        for d, data in runs:
+            workflow = _load_run_workflow(data)
+            step_order = workflow.step_names() if workflow else []
+            for name, sys_entry in data.get("systems", {}).items():
+                if system_filter and name not in system_filter:
+                    continue
+                shown.append((name, sys_entry, d, workflow, step_order))
+                statuses.append(sys_entry.get("status", "pending"))
+        if shown:
+            print(_status_summary(statuses))
+            for name, sys_entry, d, workflow, step_order in shown:
+                status = sys_entry.get("status", "pending")
+                print(_compact_line(name, status, sys_entry, workflow, d, step_order))
 
 
 def _resolve_status(run_dir):
@@ -383,16 +442,7 @@ def _print_single_run(data: dict, run_dir: str, system_filter=None, detail: bool
     if not shown:
         print("（无体系状态）")
         return
-    counts = {}
-    for _name, sys_entry in shown:
-        status = sys_entry.get("status", "pending")
-        counts[status] = counts.get(status, 0) + 1
-    summary = "汇总: " + ", ".join(
-        "%s %d" % (status, counts[status])
-        for status in ("running", "done", "failed", "paused", "interrupted", "pending")
-        if counts.get(status)
-    )
-    print(summary)
+    print(_status_summary(sys_entry.get("status", "pending") for _name, sys_entry in shown))
     for name, sys_entry in shown:
         status = sys_entry.get("status", "pending")
         if detail:

@@ -286,7 +286,16 @@ class WatchIntegrationTests(unittest.TestCase):
             env, wlog, "--queue", self.qp, "--interval", "0.01"
         )
         try:
-            time.sleep(2.5)
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                data = _load_json(self.qp)
+                if data["items"]["protA"]["status"] == "running":
+                    rs_path = os.path.join(self.outbase, "protA", "run_status.json")
+                    if os.path.isfile(rs_path):
+                        rs = _load_json(rs_path)
+                        if rs["systems"]["protA"]["steps"]["md"]["status"] == "running":
+                            break
+                time.sleep(0.3)
             r = _run_cli(env, "ctl", "exec", "stop", "-q", self.qp)
             self.assertEqual(r.returncode, 0, r.stderr)
             rc = proc.wait(timeout=120)

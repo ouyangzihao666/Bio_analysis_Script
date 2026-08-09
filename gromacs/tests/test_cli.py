@@ -116,9 +116,9 @@ class StatusFilterTests(unittest.TestCase):
             "workflow.yaml",
             "name: t\nsteps:\n  - step: env_check\n  - step: md\n",
         )
-        parent = os.path.join(self.ws.root, "bench", "test1")
+        parent = os.path.join(self.ws.root, "bench")
         for name in ("sysA", "sysB"):
-            d = os.path.join(parent, name)
+            d = os.path.join(parent, "test1", name)
             os.makedirs(d)
             data = init_status(
                 d,
@@ -134,7 +134,7 @@ class StatusFilterTests(unittest.TestCase):
             RunState(d).save(data)
         out = io.StringIO()
         args = SimpleNamespace(
-            run_dir=os.path.join(self.ws.root, "bench", "test1"),
+            run_dir=parent,
             system=None,
             json=False,
             detail=False,
@@ -145,6 +145,9 @@ class StatusFilterTests(unittest.TestCase):
         text = out.getvalue()
         self.assertIn("sysA", text)
         self.assertIn("sysB", text)
+        self.assertIn("===== test1 =====", text)
+        self.assertIn("汇总: running 2", text)
+        self.assertNotIn("===== sysA =====", text)
 
     def test_status_json_parent_wraps_runs(self):
         wf_path = self.ws.write(
