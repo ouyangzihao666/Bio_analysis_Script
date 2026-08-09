@@ -45,34 +45,71 @@ class StatusFilterTests(unittest.TestCase):
         RunState(self.run_dir).save(data)
         return data
 
-    def _run_status(self, system=None):
+    def _run_status(self, system=None, detail=False):
         self._make_status()
         out = io.StringIO()
-        args = SimpleNamespace(run_dir=self.run_dir, system=[system] if system else None, json=False)
+        args = SimpleNamespace(
+            run_dir=self.run_dir,
+            system=[system] if system else None,
+            json=False,
+            detail=detail,
+        )
         with redirect_stdout(out):
             code = cmd_status(args, None)
         return code, out.getvalue()
 
-    def test_pending_systems_hidden_by_default(self):
+    def test_compact_shows_all_systems_with_summary(self):
         code, text = self._run_status()
         self.assertEqual(code, 0)
-        self.assertIn("[caseA]", text)
-        self.assertNotIn("[caseB]", text)
-        self.assertIn("另有 1 个体系", text)
+        self.assertIn("[caseA] running  md", text)
+        self.assertIn("[caseB] pending", text)
+        self.assertIn("汇总: running 1, pending 1", text)
+        self.assertNotIn("另有", text)
 
     def test_system_filter_shows_requested_system(self):
         code, text = self._run_status(system="caseB")
         self.assertEqual(code, 0)
         self.assertIn("[caseB]", text)
         self.assertNotIn("[caseA]", text)
-        self.assertNotIn("另有", text)
 
-    def test_steps_displayed_in_workflow_order(self):
-        code, text = self._run_status()
+    def test_detail_shows_steps_in_workflow_order(self):
+        code, text = self._run_status(detail=True)
         self.assertEqual(code, 0)
+        self.assertIn("汇总:", text)
+        self.assertIn("  md ", text)
+        self.assertIn("  env_check", text)
         md_pos = text.index("md ")
         env_pos = text.index("env_check")
         self.assertLess(md_pos, env_pos)
+
+    def test_compact_failed_line_shows_step_and_error(self):
+        wf_path = self.ws.write(
+            "workflow.yaml", "name: t\nsteps:\n  - step: em\n  - step: nvt\n"
+        )
+        data = init_status(
+            self.run_dir,
+            "t",
+            wf_path,
+            "systems.yaml",
+            [SimpleNamespace(name="caseX")],
+            ["em", "nvt"],
+        )
+        data["run"]["workflow"] = wf_path
+        data["systems"]["caseX"]["steps"]["em"]["status"] = "failed"
+        data["systems"]["caseX"]["steps"]["em"]["error"] = (
+            "命令失败（退出码 1）: gmx mdrun -deffnm caseX_em 很长很长的错误信息"
+        )
+        data["systems"]["caseX"]["steps"]["nvt"]["status"] = "skipped"
+        data["systems"]["caseX"]["status"] = "failed"
+        RunState(self.run_dir).save(data)
+        out = io.StringIO()
+        args = SimpleNamespace(run_dir=self.run_dir, system=None, json=False, detail=False)
+        with redirect_stdout(out):
+            code = cmd_status(args, None)
+        self.assertEqual(code, 0)
+        text = out.getvalue()
+        self.assertIn("[caseX] failed  em  (命令失败", text)
+        self.assertIn("汇总: failed 1", text)
 
     def test_status_discovers_parent_run_dirs(self):
         wf_path = self.ws.write(
@@ -96,7 +133,12 @@ class StatusFilterTests(unittest.TestCase):
             data["systems"][name]["status"] = "running"
             RunState(d).save(data)
         out = io.StringIO()
-        args = SimpleNamespace(run_dir=os.path.join(self.ws.root, "bench", "test1"), system=None, json=False)
+        args = SimpleNamespace(
+            run_dir=os.path.join(self.ws.root, "bench", "test1"),
+            system=None,
+            json=False,
+            detail=False,
+        )
         with redirect_stdout(out):
             code = cmd_status(args, None)
         self.assertEqual(code, 0)

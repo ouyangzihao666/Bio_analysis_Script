@@ -321,12 +321,12 @@ def cmd_status(args, log) -> int:
             return EXIT_OK
         for d in data:
             print("===== %s =====" % os.path.relpath(d, base))
-            _print_single_run(RunState(d).load(), d, args.system)
+            _print_single_run(RunState(d).load(), d, args.system, detail=args.detail)
         return EXIT_OK
     if args.json:
         emit(_with_progress(data, run_dir), True)
         return EXIT_OK
-    _print_single_run(data, run_dir, args.system)
+    _print_single_run(data, run_dir, args.system, detail=args.detail)
     return EXIT_OK
 
 
@@ -371,64 +371,116 @@ def _discover_run_dirs(root: str, maxdepth: int = 4) -> list:
     return sorted(found)
 
 
-def _print_single_run(data: dict, run_dir: str, system_filter=None) -> None:
+def _print_single_run(data: dict, run_dir: str, system_filter=None, detail: bool = False) -> None:
     systems = data.get("systems", {})
     workflow = _load_run_workflow(data)
     step_order = workflow.step_names() if workflow else []
-    hidden_pending = 0
-    shown_any = False
+    shown = []
     for name, sys_entry in systems.items():
         if system_filter and name not in system_filter:
             continue
-        if not system_filter:
-            active = any(
-                st.get("status") != "pending"
-                for st in sys_entry.get("steps", {}).values()
-            )
-            if not active:
-                hidden_pending += 1
-                continue
-        shown_any = True
-        print("[%s] %s" % (name, sys_entry.get("status")))
-        steps = sys_entry.get("steps", {})
-        ordered = step_order + [k for k in steps if k not in step_order]
+        shown.append((name, sys_entry))
+    if not shown:
+        print("（无体系状态）")
+        return
+    counts = {}
+    for _name, sys_entry in shown:
+        status = sys_entry.get("status", "pending")
+        counts[status] = counts.get(status, 0) + 1
+    summary = "汇总: " + ", ".join(
+        "%s %d" % (status, counts[status])
+        for status in ("running", "done", "failed", "paused", "interrupted", "pending")
+        if counts.get(status)
+    )
+    print(summary)
+    for name, sys_entry in shown:
+        status = sys_entry.get("status", "pending")
+        if detail:
+            print("[%s] %s" % (name, status))
+            steps = sys_entry.get("steps", {})
+            ordered = step_order + [k for k in steps if k not in step_order]
+            for step_name in ordered:
+                st = steps.get(step_name)
+                if st is None:
+                    continue
+                dur = " %.1fs" % st["duration_s"] if st.get("duration_s") is not None else ""
+                extra = ""
+                if st.get("note"):
+                    extra = "  (%s)" % st["note"]
+                elif st.get("error"):
+                    extra = "  (%s)" % st["error"]
+                prog = ""
+                if st.get("status") == "running" and workflow:
+                    p = _step_progress(workflow, run_dir, name, step_name)
+                    if p:
+                        parts = []
+                        if p.get("step") is not None:
+                            parts.append(
+                                "step %s/%s (%.1f%%), t=%.1f ps"
+                                % (
+                                    p["step"],
+                                    p["nsteps"] or "?",
+                                    p["percent"] or 0.0,
+                                    p["time_ps"] or 0.0,
+                                )
+                            )
+                        if p.get("remaining"):
+                            parts.append(p["remaining"])
+                        if parts:
+                            prog = "   " + " | ".join(parts)
+                print("  %-16s %-14s%s%s%s" % (step_name, st.get("status"), dur, extra, prog))
+            continue
+        extra = _compact_detail(
+            sys_entry, workflow, run_dir, name, step_order, status
+        )
+        print("[%s] %s%s" % (name, status, ("  " + extra) if extra else ""))
+
+
+def _compact_detail(sys_entry: dict, workflow, run_dir: str, name: str,
+                    step_order: list, status: str) -> str:
+    """One-line key detail for a system in compact status view."""
+    steps = sys_entry.get("steps", {})
+    ordered = step_order + [k for k in steps if k not in step_order]
+    if status == "running":
         for step_name in ordered:
             st = steps.get(step_name)
-            if st is None:
-                continue
-            dur = " %.1fs" % st["duration_s"] if st.get("duration_s") is not None else ""
-            extra = ""
-            if st.get("note"):
-                extra = "  (%s)" % st["note"]
-            elif st.get("error"):
-                extra = "  (%s)" % st["error"]
-            prog = ""
-            if st.get("status") == "running" and workflow:
-                p = _step_progress(workflow, run_dir, name, step_name)
-                if p:
-                    parts = []
-                    if p.get("step") is not None:
-                        parts.append(
-                            "step %s/%s (%.1f%%), t=%.1f ps"
-                            % (
-                                p["step"],
-                                p["nsteps"] or "?",
-                                p["percent"] or 0.0,
-                                p["time_ps"],
+            if st and st.get("status") == "running":
+                parts = [step_name]
+                if workflow:
+                    p = _step_progress(workflow, run_dir, name, step_name)
+                    if p:
+                        if p.get("step") is not None:
+                            parts.append(
+                                "step %s/%s (%.1f%%), t=%.1f ps"
+                                % (
+                                    p["step"],
+                                    p["nsteps"] or "?",
+                                    p["percent"] or 0.0,
+                                    p["time_ps"] or 0.0,
+                                )
                             )
-                        )
-                    if p.get("remaining"):
-                        parts.append(p["remaining"])
-                    if parts:
-                        prog = "   " + " | ".join(parts)
-            print("  %-16s %-14s%s%s%s" % (step_name, st.get("status"), dur, extra, prog))
-    if hidden_pending:
-        print(
-            "（另有 %d 个体系在本 run 中未执行，均为 pending；"
-            "使用 --system <名称> 可查看）" % hidden_pending
-        )
-    if not shown_any and not hidden_pending:
-        print("（无体系状态）")
+                        if p.get("remaining"):
+                            parts.append(p["remaining"])
+                return "  ".join(parts)
+    elif status == "failed":
+        for step_name in ordered:
+            st = steps.get(step_name)
+            if st and st.get("status") == "failed":
+                err = st.get("error") or st.get("note") or ""
+                if len(err) > 100:
+                    err = err[:97] + "..."
+                return "%s  (%s)" % (step_name, err)
+    elif status == "paused":
+        for step_name in ordered:
+            st = steps.get(step_name)
+            if st and st.get("status") == "awaiting_input":
+                note = st.get("note") or ""
+                if len(note) > 80:
+                    note = note[:77] + "..."
+                return "%s  (%s)" % (step_name, note)
+    elif status == "interrupted":
+        return sys_entry.get("note") or ""
+    return ""
 
 
 def _workflow_step_order(data: dict):
@@ -641,6 +693,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("status", help="查询运行状态")
     p.add_argument("run_dir")
     p.add_argument("--system", action="append")
+    p.add_argument("--detail", action="store_true", help="展开每个体系的完整步骤列表")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_status)
 
