@@ -81,7 +81,17 @@ def append_molecules(top_path: str, entries: List[Tuple[str, int]]) -> None:
         lines.append("[ molecules ]")
         header_idx = len(lines) - 1
     insert_at = header_idx + 1
-    while insert_at < len(lines) and lines[insert_at].strip() and not lines[insert_at].strip().startswith(";"):
+    # Skip existing entries, comments and blank lines (pdb2gmx 2026 writes a
+    # "; Compound #mols" comment before the first molecule) so the appended
+    # molecules land after the current entries. The [molecules] order must
+    # match the structure order (protein first, then ligands).
+    while insert_at < len(lines):
+        line = lines[insert_at].strip()
+        if not line or line.startswith(";"):
+            insert_at += 1
+            continue
+        if line.startswith("["):
+            break
         insert_at += 1
     new_lines = ["%-12s %d" % (name, count) for name, count in entries]
     lines[insert_at:insert_at] = new_lines

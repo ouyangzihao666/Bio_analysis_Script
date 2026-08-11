@@ -55,6 +55,7 @@ systems:
       file: inputs/protein_D.pdb
     ligands:
       - name: MOL
+        file: inputs/MOL.pdb        # 名称来源；实际参数化用下面的 itp/gro
         method: manual
         itp_file: inputs/MOL.itp
         gro_file: inputs/MOL.gro

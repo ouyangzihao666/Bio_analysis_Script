@@ -1,0 +1,80 @@
+# 体系清单示例：并行 MD（多体系并发 + GPU/CPU 槽位绑定）
+# 相对路径基于本文件所在目录解析
+# 与 systems_example.yaml 的区别：增加了 slots / concurrency / 每体系 slot 绑定
+
+work_dir: ./result
+
+# 槽位模板池：数字键 -> mdrun 参数串（数字为模板编号，字符串含空格需加引号）
+# 模板是"可复用的参数模板"：同一模板可同时承载多个 job（共享 GPU/CPU 配置，
+# 同卡多 job 时用 pinoffset 等参数错开，由用户自行保证）
+slots:
+  0: "-ntmpi 1 -ntomp 32 -gpu_id 0"
+  1: "-ntmpi 1 -ntomp 32 -gpu_id 1 -pinoffset 64"
+  2: "-ntmpi 1 -ntomp 16 -gpu_id 0"
+  3: "-ntmpi 1 -ntomp 16 -gpu_id 1 -pinoffset 64"
+
+# 并发上限：同时最多运行几个体系。缺省 = 槽位数。
+# 可以大于槽位数（模板复用，例如 4 个槽位模板配 8 并发）；小于槽位数则只使用其中一部分。
+concurrency: 4
+
+systems:
+  # 纯蛋白，显式绑定槽位 0（1 张 GPU，32 线程）
+  - name: protein_A
+    protein:
+      file: inputs/protein_A.pdb
+    ligands: []
+    slot: 0
+
+  # 单配体复合物，显式绑定槽位 1（另一张 GPU，32 线程 + pinoffset）
+  - name: complex_B
+    protein:
+      file: inputs/protein_B.pdb
+    ligands:
+      - name: LIG1
+        file: inputs/ligand_1.sdf
+        charge: 0
+        count: 1
+    slot: 1
+
+  # 双配体复合物，不绑定槽位：程序自动分配到当前占用最少的模板
+  - name: complex_C
+    protein:
+      file: inputs/protein_C.pdb
+    ligands:
+      - name: LIG1
+        file: inputs/ligand_1.sdf
+        charge: 0
+      - name: LIG2
+        file: inputs/ligand_2.sdf
+        charge: -1
+        count: 2          # LIG2 两拷贝
+
+  # 多聚体 + 多配体，不绑定槽位
+  - name: multimer_D
+    protein:
+      chains:
+        - inputs/chain_A.pdb
+        - inputs/chain_B.pdb
+    ligands:
+      - name: LIG1
+        file: inputs/ligand_1.sdf
+        charge: 0
+      - name: LIG2
+        file: inputs/ligand_2.sdf
+        charge: 0
+
+  # 手动提供配体拓扑（method: manual），绑定槽位 2
+  - name: complex_manual
+    protein:
+      file: inputs/protein_D.pdb
+    ligands:
+      - name: MOL
+        file: inputs/MOL.pdb        # 名称来源；实际参数化用下面的 itp/gro
+        method: manual
+        itp_file: inputs/MOL.itp
+        gro_file: inputs/MOL.gro
+        charge: 0
+    slot: 2
+
+# 提示：双分子 mol2 自动拆分（names: [FDME, BDO]）需要真实的 mol2 文件才能通过校验，
+# 因此未放入本示例；使用方式见 systems_example.yaml 中的 complex_mol2_multi 条目。

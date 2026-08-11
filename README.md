@@ -46,7 +46,7 @@ mdkit run -w configs/workflow_analysis.yaml -s configs/systems_example.yaml --wo
 
 - `workflow.yaml`：`failure_policy: continue|stop`（默认 continue）、`layout: per_step|flat`、可选 `stage_name`（临时工作区目录名，默认 `.stage`）、`mdp_dir`、`steps` 列表；`defaults` / 步骤 `params` / 体系 `overrides` 三层参数合并。
 - `systems.yaml`：体系清单；蛋白支持 `file` 或 `chains`（多聚体）；配体支持 `sdf/mol2/pdb`、`residue`（从蛋白 PDB 提取）、`names`（多分子 mol2 拆分）、`count`（多拷贝）、`method: manual`（自带 itp/gro）。
-- `systems.yaml` 顶层资源：`slots` 为可复用模板池（`0: "-ntmpi 1 -ntomp 32 -gpu_id 0"`，缺省单模板空参数），`concurrency` 为并发上限（默认 = 模板数，可大于模板数复用模板）；每体系 `slot: N` 为显式模板绑定（缺省任意空闲模板）。
+- `systems.yaml` 顶层资源：`slots` 为可复用模板池（`0: "-ntmpi 1 -ntomp 32 -gpu_id 0"`，缺省单模板空参数），`concurrency` 为并发上限（默认 = 模板数，可大于模板数复用模板）；每体系 `slot: N` 为显式模板绑定（缺省任意空闲模板）。并行示例见 `configs/systems_example_parallel.yaml`。
 - mdp：内置模板（ions/minim/nvt/npt/md），`mdp_overrides` 覆盖渲染，模板不被修改。
 
 `failure_policy` 为 workflow 级，作用于本次 run 的所有体系；`stop` 时整个 run 终止（当前体系剩余步骤与后续体系不再执行），不影响其他并行 run。
@@ -93,6 +93,56 @@ mdkit ctl exec stop -q ./batch/queue.json
 （`.mdkit.queue.lock` 互斥）原子读写，不要手改。watch 默认 3 分钟轮询一次状态、
 30 分钟修复等待（`--interval`/`--repair-timeout` 可调，单位分钟）；退出码
 0=全部完成、2=修复超时/失败、130=人工停止。
+
+## 并行运行实操步骤（逐步）
+
+下面以 `configs/systems_example_parallel.yaml` 为模板，演示从零开始并发跑多个体系。
+
+1. **准备输入结构**：把蛋白 PDB、配体 sdf/mol2/pdb 放到 `configs/inputs/`（或自定目录），
+   并修改 `systems_example_parallel.yaml` 中每个体系的 `protein.file` / `ligands[].file`
+   为真实路径；按你的 GPU/CPU 调整 `slots` 参数串与 `concurrency`。
+
+2. **准备工作流**：复制 `configs/workflow_complex.yaml` 为 `workflow.yaml`，确认
+   `mdp_dir` 指向有效模板目录（默认内置 `configs/mdp/`）。
+
+3. **预检与预演**（不产生副作用）：
+   ```bash
+   mdkit doctor
+   mdkit plan -w workflow.yaml -s configs/systems_example_parallel.yaml --work-dir ./batch
+   ```
+   确认每个体系的步骤、mdp 渲染与每条真实命令符合预期。
+
+4. **建队列并启动执行器**：
+   ```bash
+   mdkit ctl init -w workflow.yaml -s configs/systems_example_parallel.yaml \
+     --work-dir-base ./batch
+   mdkit ctl exec start -q ./batch/queue.json --interval 3 --repair-timeout 30
+   ```
+   各体系的 run 目录在首次启动时惰性创建于 `./batch/<体系名>/`；watch 日志写在
+   `./batch/watch.log`。
+
+5. **监控进度**：
+   ```bash
+   mdkit ctl status -q ./batch/queue.json            # 每体系状态 + 模板占用
+   mdkit ctl status -q ./batch/queue.json --json     # 供脚本/AI 轮询
+   mdkit ctl exec status -q ./batch/queue.json       # watch 是否在跑
+   ```
+
+6. **失败与人工修复**：某体系失败时，其他体系不受影响继续跑。修复输入/参数后：
+   ```bash
+   mdkit ctl retry -q ./batch/queue.json <体系名>            # 默认优雅中断+checkpoint 续跑
+   mdkit ctl retry -q ./batch/queue.json <体系名> --force     # 该步骤从头重跑
+   ```
+   watch 会在下一个轮询周期自动补跑，无需重启。
+
+7. **收尾**：
+   ```bash
+   mdkit ctl exec stop -q ./batch/queue.json   # 等待在跑任务结束后退出（退出码 130）
+   mdkit report ./batch/<体系名>               # 失败体系的错误与 stderr 尾部
+   ```
+
+临时改并发参数而不动文件：`ctl init --concurrency N --slot "参数串" --slot ...`
+（`--slot` 追加为数字自动续编的新模板，`--concurrency` 覆盖文件值）。
 
 ## 一致性机制
 
