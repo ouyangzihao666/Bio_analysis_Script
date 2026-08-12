@@ -50,5 +50,5 @@ class SolvateStep(Step):
             )
         ]
 
-    def resolve_inputs(self, system) -> list:
+    def resolve_inputs(self, system, registry=None) -> list:
         return ["box_gro", "complex_top" if system.has_ligands else "topol_top"]

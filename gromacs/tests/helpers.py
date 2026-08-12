@@ -89,7 +89,8 @@ elif sub == "mdrun":
     if os.environ.get("FAKE_GMX_SLOW_MD") and name and name.endswith("_md"):
         import time
 
-        for i in range(10):
+        loops = int(os.environ.get("FAKE_GMX_SLOW_LOOPS", "10"))
+        for i in range(loops):
             # 真实 gmx mdrun -v 用 \r 原地覆盖进度行，很少写 \n
             sys.stdout.write(
                 "\rstep %d, remaining wall clock time: %d s"
@@ -118,18 +119,52 @@ if tool == "obabel":
 elif tool == "antechamber":
     out = val("-o")
     if out:
-        open(out, "w").write("antechamber fake\n")
+        open(out, "w").write(
+            "@<TRIPOS>MOLECULE\nantechamber_fake\n    0     0     0     0     0\n"
+        )
 elif tool == "acpype":
     inp = val("-i")
     if not inp:
         sys.exit(1)
-    stem = os.path.splitext(os.path.basename(inp))[0]
+    # 真实 acpype 以 mol2 内 MOLECULE 名为输出目录/文件前缀；
+    # FAKE_ACPYPE_STEM 可强制指定（用于测试命名不一致的报错路径）。
+    stem = os.environ.get("FAKE_ACPYPE_STEM", "")
+    if not stem:
+        with open(inp, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+        for i, line in enumerate(lines):
+            if line.strip() == "@<TRIPOS>MOLECULE":
+                stem = lines[i + 1].strip()
+                break
+    if not stem:
+        stem = os.path.splitext(os.path.basename(inp))[0]
     d = stem + ".acpype"
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, stem + "_GMX.itp"), "w") as fh:
         fh.write("[ moleculetype ]\n; name  nrexcl\nLIG 3\n")
     with open(os.path.join(d, stem + "_GMX.gro"), "w") as fh:
         fh.write("lig\n    1\n    1LIG      C    1   1.000   1.000   1.000\n   2.000   2.000   2.000\n")
+sys.exit(0)
+'''
+
+
+FAKE_PYMOL = r'''#!/usr/bin/env python3
+import os, re, sys
+
+# fake pymol: touches every path written by cmd.save(...) in the -cq script
+script = None
+args = sys.argv[1:]
+for i, a in enumerate(args):
+    if a == "-cq" and i + 1 < len(args):
+        script = args[i + 1]
+if not script or not os.path.isfile(script):
+    sys.exit(0)
+with open(script, encoding="utf-8") as fh:
+    for line in fh:
+        m = re.search(r"cmd\.save\(['\"]([^'\"]+)['\"]", line)
+        if m:
+            with open(m.group(1), "w") as out:
+                out.write("fake pymol output\n")
 sys.exit(0)
 '''
 
@@ -152,6 +187,16 @@ def make_fake_ligand_tools() -> str:
         with open(path, "w") as fh:
             fh.write(FAKE_LIGAND_TOOLS)
         os.chmod(path, 0o755)
+    return d
+
+
+def make_fake_pymol() -> str:
+    """Create a fake pymol binary that touches cmd.save() outputs."""
+    d = tempfile.mkdtemp(prefix="mdkit_fakepymol_")
+    path = os.path.join(d, "pymol")
+    with open(path, "w") as fh:
+        fh.write(FAKE_PYMOL)
+    os.chmod(path, 0o755)
     return d
 
 

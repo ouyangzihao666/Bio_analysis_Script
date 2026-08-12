@@ -6,6 +6,7 @@ import os
 import unittest
 
 from mdkit import topology
+from mdkit.exceptions import ConfigError
 
 from tests.helpers import TempWorkspace
 
@@ -52,6 +53,40 @@ class TopologyTests(unittest.TestCase):
         self.assertIn("BDO", content)
         self.assertRegex(content, r"FDME\s+1")
         self.assertRegex(content, r"BDO\s+2")
+
+    def test_prepare_ligand_itp_strips_duplicate_atomtypes(self):
+        itp1 = self.ws.write(
+            "a.itp",
+            "[ atomtypes ]\nC 12.01 0.0 A 0.0 0.0\n[ moleculetype ]\nA 1\n",
+        )
+        itp2 = self.ws.write(
+            "b.itp",
+            "[ atomtypes ]\nC 12.01 0.0 A 0.0 0.0\nN 14.01 0.0 A 0.0 0.0\n"
+            "[ moleculetype ]\nB 1\n",
+        )
+        out1 = self.ws.write("a_out.itp", "")
+        out2 = self.ws.write("b_out.itp", "")
+        kept = {}
+        topology.prepare_ligand_itp(itp1, out1, kept)
+        topology.prepare_ligand_itp(itp2, out2, kept)
+        with open(out1, encoding="utf-8") as fh:
+            c1 = fh.read()
+        with open(out2, encoding="utf-8") as fh:
+            c2 = fh.read()
+        self.assertIn("[ atomtypes ]", c1)
+        self.assertNotIn("[ atomtypes ]", c2)
+        self.assertIn("[ moleculetype ]", c2)
+        self.assertEqual(kept["C"], "C 12.01 0.0 A 0.0 0.0")
+
+    def test_prepare_ligand_itp_rejects_conflicting_types(self):
+        itp1 = self.ws.write("a.itp", "[ atomtypes ]\nC 12.01 0.0 A 0.0 0.0\n")
+        itp2 = self.ws.write("b.itp", "[ atomtypes ]\nC 99.00 0.0 A 0.0 0.0\n")
+        kept = {}
+        topology.prepare_ligand_itp(itp1, self.ws.write("a_out.itp", ""), kept)
+        with self.assertRaises(ConfigError):
+            topology.prepare_ligand_itp(
+                itp2, self.ws.write("b_out.itp", ""), kept
+            )
 
     def test_rename_molecule_preserves_leading_indent(self):
         top = self.ws.write(

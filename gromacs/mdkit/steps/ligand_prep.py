@@ -1,4 +1,9 @@
-"""Ligand parameterization: obabel -> antechamber -> acpype (or manual)."""
+"""Ligand parameterization: obabel -> antechamber -> acpype (or manual).
+
+Splitting is NOT part of this step anymore: embedded ligands come from
+``split_complex`` and multi-molecule files from ``split_ligand`` /
+``pymol_split_ligand``. This step only receives single-molecule inputs.
+"""
 
 from __future__ import annotations
 
@@ -6,14 +11,14 @@ import glob
 import os
 import shutil
 
-from mdkit import gro, mol2, topology
+from mdkit import mol2, topology
 from mdkit.exceptions import StepError
 from mdkit.steps.base import Step
 
 
 class LigandPrepStep(Step):
     name = "ligand_prep"
-    version = "1.2"
+    version = "2.0"
     description = "配体加氢、电荷计算与 GROMACS 拓扑生成（GAFF2/手动）"
     inputs = []
     outputs = []
@@ -23,13 +28,25 @@ class LigandPrepStep(Step):
     }
     env_requirements = ["obabel", "antechamber", "parmchk2", "acpype"]
 
-    def resolve_inputs(self, system) -> list:
-        logicals = ["ligand_sdf:%s" % l.name for l in system.ligands]
+    def resolve_inputs_with(self, system, registry) -> list:
+        logicals = []
         for ligand in system.ligands:
             if ligand.method == "manual":
                 logicals.append("ligand_itp_src:%s" % ligand.name)
                 logicals.append("ligand_gro_src:%s" % ligand.name)
+                continue
+            if registry is not None and registry.get("ligand_mol:%s" % ligand.name):
+                logicals.append("ligand_mol:%s" % ligand.name)
+            elif registry is not None and registry.get(
+                "split_ligand_pdb:%s" % ligand.name
+            ):
+                logicals.append("split_ligand_pdb:%s" % ligand.name)
+            else:
+                logicals.append("ligand_sdf:%s" % ligand.name)
         return logicals
+
+    def resolve_inputs(self, system, registry=None) -> list:
+        return self.resolve_inputs_with(system, registry)
 
     def run(self, ctx) -> None:
         system = ctx.system
@@ -56,47 +73,18 @@ class LigandPrepStep(Step):
         )
         shutil.copyfile(ligand.itp_file, itp)
         shutil.copyfile(ligand.gro_file, gr)
-        topology.rename_molecule(itp, gr, ligand.name)
-        self._check_components(ctx, ligand, itp)
+        topology.rename_molecule(itp, gr, ligand.gmx_name)
 
     def _auto(self, ctx, ligand) -> None:
-        fmt = ligand.resolved_format()
-        if ligand.residue is not None:
-            extracted = ctx.path("%s_lig.pdb" % ligand.name)
-            n = gro.extract_pdb_residue(
-                ligand.file, ligand.residue, extracted, ligand.name
-            )
-            components = gro.count_pdb_residue_components(ligand.file, ligand.residue)
-            if components > 1:
-                raise StepError(
-                    "PDB 残基 %s（配体 %s）包含 %d 个互不连接的分子片段，"
-                    "说明多个小分子共用了同一残基名，无法自动拆分。"
-                    "解决方案：人工拆分后为每个小分子提供独立的 sdf/mol2 文件，"
-                    "或改用不同残基名。" % (ligand.residue, ligand.name, components)
-                )
-            ctx.log.info(
-                "已从 PDB 提取配体 %s（残基 %s，%d 原子）",
-                ligand.name,
-                ligand.residue,
-                n,
-            )
-            src = extracted
-            fmt = "pdb"
-        else:
-            src = ctx.registry.get("ligand_sdf:%s" % ligand.name) or ligand.file
-            if fmt == "mol2" and ligand.source_mol_index is not None:
-                split_mol2 = ctx.path("%s_src.mol2" % ligand.name)
-                mol2.extract_molecule(src, split_mol2, ligand.source_mol_index)
-                src = split_mol2
-            elif fmt == "mol2":
-                blocks = mol2.parse_molecules(src)
-                if len(blocks) == 1 and mol2.count_components_in_block(blocks[0]) > 1:
-                    raise StepError(
-                        "配体 %s 的 mol2 单分子段包含 %d 个互不连接的分子片段，"
-                        "说明多个小分子被合并到了同一名称下，无法自动拆分。"
-                        "解决方案：人工拆分后为每个小分子提供独立的 sdf/mol2 文件。"
-                        % (ligand.name, mol2.count_components_in_block(blocks[0]))
-                    )
+        src = (
+            ctx.registry.get("ligand_mol:%s" % ligand.name)
+            or ctx.registry.get("split_ligand_pdb:%s" % ligand.name)
+            or ctx.registry.get("ligand_sdf:%s" % ligand.name)
+            or ligand.file
+        )
+        fmt = _fmt_for_src(src, ligand)
+        if not os.path.isfile(src):
+            raise StepError("配体 %s 的输入文件不存在: %s" % (ligand.name, src))
         sdf_h = ctx.path("%s_H.sdf" % ligand.name)
         mol2_out = ctx.path("%s.mol2" % ligand.name)
         itp = ctx.register_output(
@@ -135,58 +123,58 @@ class LigandPrepStep(Step):
                 ctx.params["charge_method"],
                 "-s",
                 "2",
-                "-nc",
-                str(int(ligand.charge)),
-            ]
+            "-nc",
+            str(int(ligand.charge)),
+        ]
         )
+        mol2.rename_molecule_name(mol2_out, ligand.gmx_name)
         ctx.run_cmd(["acpype", "-i", mol2_out])
-        candidates = sorted(glob.glob(ctx.path("%s*.acpype" % ligand.name)))
+        candidates = sorted(glob.glob(ctx.path("%s*.acpype" % ligand.gmx_name)))
         if not candidates:
             raise StepError(
-                "acpype 未生成 %s.acpype 目录（%s）" % (ligand.name, ctx.cwd)
+                "acpype 未生成 %s.acpype 目录（%s）。"
+                "请检查 acpype 输出路径中的文件，确定 <配体名>_GMX.itp 的真实"
+                "“配体名”（实际目录: %s）"
+                % (
+                    ligand.gmx_name,
+                    ctx.cwd,
+                    _acpype_dir_summary(ctx.cwd),
+                )
             )
         acpype_dir = candidates[0]
-        src_itp = os.path.join(acpype_dir, "%s_GMX.itp" % ligand.name)
-        src_gro = os.path.join(acpype_dir, "%s_GMX.gro" % ligand.name)
+        src_itp = os.path.join(acpype_dir, "%s_GMX.itp" % ligand.gmx_name)
+        src_gro = os.path.join(acpype_dir, "%s_GMX.gro" % ligand.gmx_name)
         if not os.path.isfile(src_itp) or not os.path.isfile(src_gro):
             raise StepError(
-                "acpype 输出缺少 %s_GMX.itp/gro（目录: %s）" % (ligand.name, acpype_dir)
+                "acpype 输出缺少 %s_GMX.itp/gro（目录: %s）。"
+                "请检查 acpype 输出路径中的文件，确定 <配体名>_GMX.itp 的真实"
+                "“配体名”（实际文件: %s）"
+                % (
+                    ligand.gmx_name,
+                    acpype_dir,
+                    _acpype_dir_summary(acpype_dir),
+                )
             )
         shutil.copyfile(src_itp, itp)
         shutil.copyfile(src_gro, gr)
-        topology.rename_molecule(itp, gr, ligand.name)
-        self._check_components(ctx, ligand, itp)
-        ctx.remove_temp("%s.acpype" % os.path.basename(acpype_dir.rstrip("/")))
+        topology.rename_molecule(itp, gr, ligand.gmx_name)
+        ctx.remove_temp("%s.acpype" % ligand.gmx_name)
         ctx.remove_temp("%s_H.sdf" % ligand.name)
         ctx.remove_temp("%s.mol2" % ligand.name)
-        if ligand.source_mol_index is not None:
-            ctx.remove_temp("%s_src.mol2" % ligand.name)
-        if ligand.residue is not None:
-            ctx.remove_temp("%s_lig.pdb" % ligand.name)
-
-    def _check_components(self, ctx, ligand, itp_path: str) -> None:
-        natoms, n_components = topology.count_components(itp_path)
-        if n_components > 1:
-            raise StepError(
-                "配体 %s 的拓扑包含 %d 个互不连接的分子片段（共 %d 原子），"
-                "说明输入把多个小分子合并到了同一残基名下，无法自动拆分。"
-                "解决方案：人工拆分后为每个小分子提供独立的 sdf/mol2 文件"
-                "（或 PDB 内使用不同残基名），再重新运行。"
-                % (ligand.name, n_components, natoms)
-            )
 
     def build_commands(self, ctx):
         """Preview of the ligand toolchain (no files are created)."""
         cmds = []
         for ligand in ctx.system.ligands:
-            fmt = ligand.resolved_format()
-            if ligand.residue is not None:
-                src = ctx.path("%s_lig.pdb" % ligand.name)
-                fmt = "pdb"
-            else:
-                src = ctx.registry.get("ligand_sdf:%s" % ligand.name) or ligand.file
-                if fmt == "mol2" and ligand.source_mol_index is not None:
-                    src = ctx.path("%s_src.mol2" % ligand.name)
+            if ligand.method == "manual":
+                continue
+            src = (
+                ctx.registry.get("ligand_mol:%s" % ligand.name)
+                or ctx.registry.get("split_ligand_pdb:%s" % ligand.name)
+                or ctx.registry.get("ligand_sdf:%s" % ligand.name)
+                or ligand.file
+            )
+            fmt = _fmt_for_src(src, ligand)
             sdf_h = ctx.path("%s_H.sdf" % ligand.name)
             mol2_out = ctx.path("%s.mol2" % ligand.name)
             cmds.append(
@@ -219,3 +207,30 @@ class LigandPrepStep(Step):
             )
             cmds.append(("cmd", ["acpype", "-i", mol2_out], None))
         return cmds
+
+
+def _fmt_for_src(src: str, ligand) -> str:
+    ext = os.path.splitext(src)[1].lower()
+    if ext == ".mol2":
+        return "mol2"
+    if ext in (".sdf", ".sd"):
+        return "sdf"
+    if ext == ".pdb":
+        return "pdb"
+    return ligand.resolved_format()
+
+
+def _acpype_dir_summary(directory: str) -> str:
+    parts = []
+    itps = sorted(glob.glob(os.path.join(directory, "*_GMX.itp")))
+    parts.extend(os.path.basename(p) for p in itps)
+    for d in sorted(glob.glob(os.path.join(directory, "*.acpype"))):
+        inner = sorted(glob.glob(os.path.join(d, "*_GMX.itp")))
+        if inner:
+            parts.extend(
+                os.path.join(os.path.basename(d), os.path.basename(p))
+                for p in inner
+            )
+        else:
+            parts.append(os.path.basename(d) + "/")
+    return "、".join(parts) or "（目录为空）"

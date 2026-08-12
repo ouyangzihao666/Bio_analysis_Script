@@ -64,7 +64,8 @@ def setup_logging(verbose: bool = False, log_path: str = "") -> logging.Logger:
 
 def emit(data, as_json: bool = False):
     if as_json:
-        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+        # 保持插入顺序（体系/步骤顺序与输入文件一致）
+        print(json.dumps(data, ensure_ascii=False, indent=2))
     else:
         print(data)
 
@@ -89,9 +90,13 @@ def _selected(systems_cfg, names):
 
 
 def _register_sources(registry, system):
-    registry.register_source("protein_pdb", system.protein.chains[0])
-    for i, chain in enumerate(system.protein.chains):
-        registry.register_source("protein_chain:%d" % i, chain)
+    if system.complex is not None:
+        registry.register_source("complex_pdb", system.complex["file"])
+        registry.register_source("protein_pdb", system.complex["file"])
+    else:
+        registry.register_source("protein_pdb", system.protein.chains[0])
+        for i, chain in enumerate(system.protein.chains):
+            registry.register_source("protein_chain:%d" % i, chain)
     for ligand in system.ligands:
         registry.register_source("ligand_sdf:%s" % ligand.name, ligand.file)
         if ligand.method == "manual":
@@ -105,7 +110,7 @@ def _register_sources(registry, system):
 
 def cmd_doctor(args, log) -> int:
     report = doctor_mod.check_environment(
-        tools=["obabel", "antechamber", "parmchk2", "acpype"]
+        tools=["obabel", "antechamber", "parmchk2", "acpype", "pymol"]
     )
     if args.json:
         emit(report, True)
@@ -145,12 +150,14 @@ def cmd_plan(args, log) -> int:
             params = effective_params(workflow, steps, system, spec)
             step_dir = step_dir_for(workflow, work_dir, system.name, spec)
             inputs = {}
-            for logical in step.resolve_inputs(system):
+            for logical in step.resolve_inputs(system, registry):
                 p = registry.get(logical)
                 if p and os.path.isfile(p):
                     inputs[logical] = p
-                elif logical in produced:
-                    inputs[logical] = "将由步骤 %s 生成" % produced[logical]
+                elif logical in produced or registry.producer(logical):
+                    inputs[logical] = "将由步骤 %s 生成" % (
+                        produced.get(logical) or registry.producer(logical)
+                    )
                 else:
                     inputs[logical] = "未找到"
             rec = {
@@ -168,6 +175,7 @@ def cmd_plan(args, log) -> int:
                     ),
                 }
             rec["commands"] = []
+            plan_ctx = None
             try:
                 plan_ctx = StepContext(
                     system=system,
@@ -180,6 +188,8 @@ def cmd_plan(args, log) -> int:
                     log=log,
                     mdp_dir=workflow.resolve_mdp_dir(_builtin_mdp_dir()),
                     run_dir=work_dir,
+                    workflow=workflow,
+                    steps=steps,
                 )
                 for item in step.build_commands(plan_ctx):
                     kind, argv, stdin = item[0], item[1], item[2]
@@ -194,6 +204,11 @@ def cmd_plan(args, log) -> int:
             for logical, tpl, _opt in step.outputs:
                 fname = tpl.format(system=system.name)
                 registry.set(logical, os.path.join(step_dir, fname), producer=spec.name)
+            if plan_ctx is not None:
+                for logical, rel in plan_ctx.outputs_map()[0].items():
+                    registry.set(
+                        logical, os.path.join(step_dir, rel), producer=spec.name
+                    )
             if spec.name == "ligand_prep" and system.has_ligands:
                 for ligand in system.ligands:
                     registry.set(
@@ -622,7 +637,9 @@ def cmd_skip(args, log) -> int:
 
 
 def cmd_retry(args, log) -> int:
-    result = runner_cmd_retry(args.run_dir, args.system, args.step)
+    result = runner_cmd_retry(
+        args.run_dir, args.system, args.step, getattr(args, "select", None)
+    )
     emit(result, args.json)
     return EXIT_OK
 
@@ -842,6 +859,7 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("system")
     pp.add_argument("step", nargs="?", default=None)
     pp.add_argument("--force", action="store_true", help="中断当前 step 后从头重跑（不续跑）")
+    pp.add_argument("--select", default=None, help="同名歧义时选择候选 key（如 2）")
     pp.add_argument("--json", action="store_true")
     pp.set_defaults(func=ctl_retry)
 
@@ -849,6 +867,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_queue_arg(pp)
     pp.add_argument("system")
     pp.add_argument("step", nargs="?", default=None)
+    pp.add_argument("--select", default=None, help="同名歧义时选择候选 key（如 2）")
     pp.add_argument("--json", action="store_true")
     pp.set_defaults(func=ctl_force)
 
@@ -914,6 +933,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("run_dir")
     p.add_argument("system")
     p.add_argument("step", nargs="?", default=None)
+    p.add_argument("--select", default=None, help="同名歧义时选择候选 key（如 2）")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_retry)
 

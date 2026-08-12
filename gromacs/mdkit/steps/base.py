@@ -29,6 +29,7 @@ class Step:
     version: str = "1.0"
     description: str = ""
     inputs: List[str] = []
+    optional_inputs: List[str] = []
     outputs: List[tuple] = []
     param_schema: Dict[str, dict] = {}
     env_requirements: List[str] = []
@@ -48,9 +49,17 @@ class Step:
                 raise ConfigError("步骤 %s 未知参数: %s" % (self.name, pname))
         return merged
 
-    def resolve_inputs(self, system) -> list:
-        """Logical input names this step will consume (may be system-specific)."""
-        return list(self.inputs)
+    def resolve_inputs(self, system, registry=None) -> list:
+        """Logical input names this step will consume (may be system-specific).
+
+        ``registry`` is passed when available (runner, plan) so steps can
+        choose between optional/candidate inputs based on what is present.
+        """
+        return list(self.inputs) + list(self.optional_inputs)
+
+    def mdp_signature(self, params: dict, mdp_dir: str):
+        """Return mdp provenance for the step signature, or None."""
+        return None
 
     def _coerce(self, pname, value, spec):
         if value is None and spec.get("default") is None:
@@ -154,6 +163,9 @@ class StepContext:
         dry_run: bool = False,
         force: bool = False,
         run_dir: str = "",
+        workflow=None,
+        steps=None,
+        choice_answer=None,
     ):
         self.system = system
         self.step = step
@@ -167,6 +179,9 @@ class StepContext:
         self.dry_run = dry_run
         self.force = force
         self.run_dir = os.path.abspath(run_dir)
+        self.workflow = workflow
+        self.steps = steps
+        self.choice_answer = choice_answer
         self._outputs: Dict[str, str] = {}
         self._optional: Dict[str, bool] = {}
         self.commands: List[str] = []
@@ -246,6 +261,17 @@ class StepContext:
     # -- outputs ---------------------------------------------------------
     def outputs_map(self):
         return dict(self._outputs), dict(self._optional)
+
+    def step_params(self, step_name: str) -> Optional[dict]:
+        """Effective parameters of another workflow step (or None)."""
+        if self.workflow is None or self.steps is None:
+            return None
+        spec = self.workflow.step_by_name(step_name)
+        if spec is None or step_name not in self.steps:
+            return None
+        from mdkit.runner import effective_params
+
+        return effective_params(self.workflow, self.steps, self.system, spec)
 
 
 def _mdrun_tee(ctx: "StepContext", argv: List[str]) -> Optional[str]:

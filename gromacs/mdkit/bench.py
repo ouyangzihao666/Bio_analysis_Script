@@ -148,7 +148,7 @@ class Sampler:
             if name in self._triggered:
                 continue
             prog = step_progress(self.workflow, info["rundir"], name, "md")
-            if not prog:
+            if not prog or prog.get("time_ps") is None:
                 continue
             t_ps = prog["time_ps"]
             if self.window[0] <= t_ps < self.window[1]:

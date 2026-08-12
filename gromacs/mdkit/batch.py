@@ -69,35 +69,47 @@ def write_temp_systems(workflow, system, merged_extra: str, path: str,
     merged on top of the system's own overrides (e.g. continue_cpt for
     checkpoint resume after a graceful interrupt).
     """
-    ligands = []
-    for lig in system.ligands:
-        entry = {
-            "name": lig.name,
-            "file": lig.file,
-            "charge": lig.charge,
-            "count": lig.count,
-            "method": lig.method,
+    if system.complex is not None:
+        complex_ligands = []
+        for lig in system.complex["ligands"]:
+            entry = {"name": lig["name"], "charge": lig["charge"]}
+            if lig.get("chain"):
+                entry["chain"] = lig["chain"]
+            complex_ligands.append(entry)
+        body = {
+            "complex": {
+                "file": system.complex["file"],
+                "ligands": complex_ligands,
+            }
         }
-        if lig.residue:
-            entry["residue"] = lig.residue
-        if lig.format != "auto":
-            entry["format"] = lig.format
-        if lig.names:
-            entry["names"] = lig.names
-        if lig.itp_file:
-            entry["itp_file"] = lig.itp_file
-        if lig.gro_file:
-            entry["gro_file"] = lig.gro_file
-        if not lig.split:
-            entry["split"] = False
-        if lig.source_mol_index is not None:
-            entry["_source_mol_index"] = lig.source_mol_index
-        ligands.append(entry)
-    protein = (
-        {"file": system.protein.chains[0]}
-        if not system.protein.is_multimer
-        else {"chains": system.protein.chains}
-    )
+    else:
+        ligands = []
+        for lig in system.ligands:
+            entry = {
+                "name": lig.name,
+                "file": lig.file,
+                "charge": lig.charge,
+                "method": lig.method,
+            }
+            if lig.format != "auto":
+                entry["format"] = lig.format
+            if lig.names:
+                entry["names"] = lig.names
+            if lig.itp_file:
+                entry["itp_file"] = lig.itp_file
+            if lig.gro_file:
+                entry["gro_file"] = lig.gro_file
+            if not lig.split:
+                entry["split"] = False
+            if lig.source_mol_index is not None:
+                entry["_source_mol_index"] = lig.source_mol_index
+            ligands.append(entry)
+        protein = (
+            {"file": system.protein.chains[0]}
+            if not system.protein.is_multimer
+            else {"chains": system.protein.chains}
+        )
+        body = {"protein": protein, "ligands": ligands}
     overrides = copy.deepcopy(system.overrides)
     for step_name in ("em", "nvt", "npt", "md"):
         if workflow.step_by_name(step_name):
@@ -108,8 +120,7 @@ def write_temp_systems(workflow, system, merged_extra: str, path: str,
         "systems": [
             {
                 "name": system.name,
-                "protein": protein,
-                "ligands": ligands,
+                **body,
                 "overrides": overrides,
             }
         ]

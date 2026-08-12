@@ -55,7 +55,8 @@ def atomic_write_json(path: str, data: dict) -> None:
     fd, tmp = tempfile.mkstemp(prefix=".status_", dir=os.path.dirname(path))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
+            # 不排序：systems/步骤顺序跟随输入 systems 文件（状态/报告展示顺序）
+            json.dump(data, fh, ensure_ascii=False, indent=2)
             fh.write("\n")
         os.replace(tmp, path)
     except BaseException:

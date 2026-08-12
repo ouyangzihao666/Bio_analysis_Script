@@ -48,7 +48,14 @@ class GroTests(unittest.TestCase):
         lines.append("   2.000   2.000   2.000")
         solvated = self.ws.write("solv.gro", "\n".join(lines) + "\n")
         out = os.path.join(self.ws.root, "system.ndx")
-        n = gro.build_index(solvated, protein_atoms=2, ligand_atom_counts=[2], ligand_names=["LIG"], out_path=out)
+        n = gro.build_index(
+            solvated,
+            protein_atoms=2,
+            ligand_atom_counts=[2],
+            ligand_names=["LIG"],
+            out_path=out,
+            ion_names=("NA", "CL"),
+        )
         self.assertEqual(n, 8)
         with open(out, encoding="utf-8") as fh:
             content = fh.read()
@@ -57,6 +64,12 @@ class GroTests(unittest.TestCase):
         self.assertIn("[ C-alpha ]", content)
         self.assertIn("[ Ion ]", content)
         self.assertIn("[ Protein_Ligand_LIG ]", content)
+        # Ion 组只含显式命名的阴阳离子（不含配体原子 3、4）
+        ion_block = content.split("[ Ion ]")[1].split("[")[0]
+        self.assertNotIn("3", ion_block.split())
+        self.assertNotIn("4", ion_block.split())
+        self.assertIn("7", ion_block.split())
+        self.assertIn("8", ion_block.split())
 
     def test_merge_pdb_chains(self):
         a = self.ws.write("a.pdb", _pdb_chain("A"))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import signal
@@ -26,7 +27,8 @@ from mdkit.runner import (
 
 def emit(data, as_json: bool = False):
     if as_json:
-        print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
+        # 保持插入顺序（队列/体系顺序与输入 systems 文件一致）
+        print(json.dumps(data, ensure_ascii=False, indent=2))
     else:
         print(data)
 
@@ -63,7 +65,16 @@ def ctl_init(args, log) -> int:
         slots.append({"index": next_index, "args": str(arg)})
         next_index += 1
     validate_slots(slots)
-    concurrency = args.concurrency or systems_cfg.concurrency
+    if args.concurrency is not None:
+        if not (
+            isinstance(args.concurrency, int)
+            and not isinstance(args.concurrency, bool)
+            and args.concurrency >= 1
+        ):
+            raise ConfigError("--concurrency 必须是不小于 1 的整数")
+        concurrency = args.concurrency
+    else:
+        concurrency = systems_cfg.concurrency
     items = {}
     for name in _system_names(systems_cfg, args.system):
         system = systems_cfg.system_by_name(name)
@@ -85,7 +96,7 @@ def ctl_init(args, log) -> int:
     q.save(data)
     result = {
         "queue": queue_path,
-        "systems": sorted(items),
+        "systems": list(items),
         "slots": slots,
         "concurrency": concurrency,
     }
@@ -133,6 +144,11 @@ def ctl_status(args, log) -> int:
                 rec["step_status"] = {
                     k: v.get("status") for k, v in (entry.get("steps") or {}).items()
                 }
+                rec["choices"] = {
+                    k: v.get("choice")
+                    for k, v in (entry.get("steps") or {}).items()
+                    if v.get("choice")
+                }
             except Exception:
                 pass
         rec["next_action"] = _next_action(rec)
@@ -168,6 +184,12 @@ def ctl_status(args, log) -> int:
                         p.get("time_ps") or 0,
                         (" | %s" % p["remaining"]) if p.get("remaining") else "",
                     ))
+        for step_name, choice in (rec.get("choices") or {}).items():
+            opts = ", ".join(
+                "%s=%s" % (c["key"], c["label"]) for c in choice.get("candidates", [])
+            )
+            print("    %s 待选择: %s（候选: %s）" % (step_name, choice.get("question"), opts))
+            print("      使用: ctl retry %s %s --select <key>" % (name, step_name))
         if rec.get("next_action"):
             print("    下一步: %s" % rec["next_action"])
     return 0
@@ -251,23 +273,29 @@ def ctl_queue(args, log) -> int:
             return {"released": sorted(args.system or [])}
         if action == "sync":
             systems_cfg = load_systems(systems_path)
-            before = set(data["items"])
+            before = data["items"]
             data["queue"]["slots"] = [dict(s) for s in systems_cfg.slots]
             data["queue"]["concurrency"] = systems_cfg.concurrency
+            # 按输入 systems.yaml 顺序重建 items（保留已有 item 的状态），
+            # 否则旧队列（如历史排序写入的）sync 后顺序仍然错误。
+            new_items = {}
             for system in systems_cfg.systems:
-                if system.name in data["items"]:
-                    data["items"][system.name]["slot"] = system.slot
+                if system.name in before:
+                    item = before[system.name]
+                    item["slot"] = system.slot
                 else:
-                    data["items"][system.name] = new_item(
+                    item = new_item(
                         system.name,
                         system.slot,
                         os.path.join(data["queue"]["work_dir_base"], system.name),
                     )
-            removed = sorted(before - {s.name for s in systems_cfg.systems})
-            for name in removed:
-                del data["items"][name]
+                new_items[system.name] = item
+            data["items"] = new_items
+            removed = sorted(set(before) - {s.name for s in systems_cfg.systems})
             return {
-                "added": sorted({s.name for s in systems_cfg.systems} - before),
+                "added": sorted(
+                    {s.name for s in systems_cfg.systems} - set(before)
+                ),
                 "removed": removed,
                 "slots": data["queue"]["slots"],
                 "concurrency": data["queue"]["concurrency"],
@@ -325,9 +353,29 @@ def ctl_exec(args, log) -> int:
             already = bool(data["queue"].get("stop_requested_before"))
             data["queue"]["stop_requested"] = True
             data["queue"]["stop_requested_before"] = True
-            if pid and _pid_alive(pid):
-                os.kill(pid, signal.SIGKILL if already else signal.SIGTERM)
-            return {"watch_pid": pid, "stop_requested": True, "forced": already}
+            watch_alive = bool(pid and _pid_alive(pid))
+            killed = []
+            if watch_alive:
+                # 一律发 SIGTERM：watch 在收到第二次信号时会对运行中的
+                # 子进程组（mdkit run → gmx）发 SIGKILL；直接 SIGKILL watch
+                # 会让子进程成为孤儿继续占用 GPU。
+                os.kill(pid, signal.SIGTERM)
+            if already:
+                # 兜底：直接终止仍在运行体系的 mdkit run 进程组（含 gmx），
+                # 覆盖 watch 已不在运行但残留子进程的场景。
+                killed = _kill_run_processes(data["items"])
+                if not watch_alive:
+                    for name in killed:
+                        it = data["items"][name]
+                        it["status"] = "failed"
+                        it["note"] = "watch 已不在运行，强制终止残留进程"
+            return {
+                "watch_pid": pid,
+                "watch_alive": watch_alive,
+                "stop_requested": True,
+                "forced": already,
+                "killed": killed,
+            }
 
         result = q.locked(mark_stop, timeout=10.0)
         emit(result, args.json)
@@ -362,11 +410,56 @@ def _pid_alive(pid: int) -> bool:
         return False
 
 
+def _lock_holder_pid(lock_path: str):
+    """Return the pid holding the flock on a run lock file, or None."""
+    try:
+        fh = open(lock_path, "r", encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return None  # 锁空闲：无持有者
+        except OSError:
+            try:
+                return int(fh.read().strip())
+            except (OSError, ValueError):
+                return None
+    finally:
+        fh.close()
+
+
+def _kill_run_processes(items: dict) -> list:
+    """Kill lingering ``mdkit run`` process groups for running queue items.
+
+    Reads each running item's ``.mdkit.lock`` (flock-held) to find the run
+    process and SIGKILLs its process group, which includes gmx mdrun.
+    """
+    killed = []
+    for name, item in items.items():
+        if item.get("status") != "running":
+            continue
+        lock_path = os.path.join(item["run_dir"], ".mdkit.lock")
+        pid = _lock_holder_pid(lock_path)
+        if pid is None or not _pid_alive(pid):
+            continue
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                continue
+        killed.append(name)
+    return killed
+
+
 # ----------------------------------------------------------------------
 # ctl intervention (retry / skip / rollback / clean / force)
 # ----------------------------------------------------------------------
 def _intervene(q: Queue, name: str, action: str, step=None, force=False,
-               reason: str = "", outputs=None, from_step=None, yes=False) -> dict:
+               reason: str = "", outputs=None, from_step=None, yes=False,
+               select=None) -> dict:
     def mutate(data: dict) -> dict:
         item = data["items"].get(name)
         if item is None:
@@ -381,6 +474,7 @@ def _intervene(q: Queue, name: str, action: str, step=None, force=False,
                 "force": force,
                 "reason": reason,
                 "outputs": list(outputs or []),
+                "select": select,
                 "requested_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
             return {
@@ -393,7 +487,7 @@ def _intervene(q: Queue, name: str, action: str, step=None, force=False,
         # not running: apply immediately
         if action in ("retry", "rollback"):
             if action == "retry":
-                cmd_retry(run_dir, name, step)
+                cmd_retry(run_dir, name, step, select=select)
             else:
                 cmd_rollback(run_dir, name, step)
         elif action == "skip":
@@ -414,14 +508,28 @@ def _intervene(q: Queue, name: str, action: str, step=None, force=False,
 
 def ctl_retry(args, log) -> int:
     q = _load_queue(args)
-    result = _intervene(q, args.system, "retry", args.step, force=args.force)
+    result = _intervene(
+        q,
+        args.system,
+        "retry",
+        args.step,
+        force=args.force,
+        select=getattr(args, "select", None),
+    )
     emit(result, args.json)
     return 0
 
 
 def ctl_force(args, log) -> int:
     q = _load_queue(args)
-    result = _intervene(q, args.system, "retry", args.step, force=True)
+    result = _intervene(
+        q,
+        args.system,
+        "retry",
+        args.step,
+        force=True,
+        select=getattr(args, "select", None),
+    )
     emit(result, args.json)
     return 0
 

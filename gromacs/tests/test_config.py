@@ -122,14 +122,66 @@ class ConfigTests(unittest.TestCase):
             "    ligands:\n"
             "      - name: L1\n        file: inputs/l1.sdf\n        charge: 0\n"
             "      - name: L2\n        file: inputs/l2.sdf\n        charge: -1\n"
-            "        count: 2\n"
         )
         cfg = load_systems(path)
         system = cfg.systems[0]
         self.assertTrue(system.protein.is_multimer)
         self.assertEqual(len(system.ligands), 2)
-        self.assertEqual(system.ligands[1].count, 2)
         self.assertEqual(system.ligands[1].charge, -1)
+        self.assertEqual(system.ligands[1].gmx_name, "L2")
+
+    def test_count_field_rejected(self):
+        self.ws.add_protein("a.pdb")
+        self.ws.add_ligand("l1.sdf")
+        path = self.ws.systems_yaml(
+            "  - name: complex\n"
+            "    protein:\n      file: inputs/a.pdb\n"
+            "    ligands:\n"
+            "      - name: L1\n        file: inputs/l1.sdf\n        charge: 0\n"
+            "        count: 2\n"
+        )
+        with self.assertRaises(ConfigError):
+            load_systems(path)
+
+    def test_complex_block_and_same_name_ligands(self):
+        self.ws.write(
+            "inputs/complex.pdb",
+            "ATOM      1  CA  ALA A   1       1.000   1.000   1.000  1.00  0.00           C\n"
+            "HETATM    2  C1  UNK A 501       2.000   2.000   2.000  1.00  0.00           C\n"
+            "HETATM    3  C1  UNK A 502       3.000   3.000   3.000  1.00  0.00           C\n"
+            "END\n",
+        )
+        path = self.ws.systems_yaml(
+            "  - name: comp\n"
+            "    complex:\n"
+            "      file: inputs/complex.pdb\n"
+            "      ligands:\n"
+            "        - {name: UNK, charge: 0}\n"
+            "        - {name: UNK, charge: 0}\n"
+        )
+        cfg = load_systems(path)
+        system = cfg.systems[0]
+        self.assertEqual([l.name for l in system.ligands], ["UNK_501", "UNK_502"])
+        self.assertEqual([l.gmx_name for l in system.ligands], ["UNK", "UNK"])
+        self.assertTrue(all(l.from_complex for l in system.ligands))
+
+    def test_complex_block_count_mismatch_rejected(self):
+        self.ws.write(
+            "inputs/complex.pdb",
+            "ATOM      1  CA  ALA A   1       1.000   1.000   1.000  1.00  0.00           C\n"
+            "HETATM    2  C1  UNK A 501       2.000   2.000   2.000  1.00  0.00           C\n"
+            "END\n",
+        )
+        path = self.ws.systems_yaml(
+            "  - name: comp\n"
+            "    complex:\n"
+            "      file: inputs/complex.pdb\n"
+            "      ligands:\n"
+            "        - {name: UNK, charge: 0}\n"
+            "        - {name: UNK, charge: 0}\n"
+        )
+        with self.assertRaises(ConfigError):
+            load_systems(path)
 
     def test_system_name_with_slash_rejected(self):
         path = self.ws.write(

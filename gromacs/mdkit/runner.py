@@ -9,7 +9,14 @@ import signal
 import time
 from typing import Dict, List, Optional
 
-from mdkit.exceptions import ConfigError, InputError, MdkitError, RunError, StepError
+from mdkit.exceptions import (
+    ChoiceError,
+    ConfigError,
+    InputError,
+    MdkitError,
+    RunError,
+    StepError,
+)
 from mdkit.gmx import CommandRunner
 from mdkit.monitor import RunLock, RunState, load_or_init_status
 from mdkit.registry import FileRegistry, conventions_with_dirs
@@ -74,7 +81,18 @@ class Runner:
     def _effective_params(self, system, spec) -> dict:
         return effective_params(self.workflow, self.steps, system, spec)
 
-    def _make_ctx(self, system, spec, step, params, step_dir, cwd, registry, mdp_dir):
+    def _make_ctx(
+        self,
+        system,
+        spec,
+        step,
+        params,
+        step_dir,
+        cwd,
+        registry,
+        mdp_dir,
+        choice_answer=None,
+    ):
         return StepContext(
             system=system,
             step=step,
@@ -88,6 +106,9 @@ class Runner:
             dry_run=False,
             force=self.force,
             run_dir=self.work_dir,
+            workflow=self.workflow,
+            steps=self.steps,
+            choice_answer=choice_answer,
         )
 
     def _registry(self, system, data) -> FileRegistry:
@@ -96,9 +117,13 @@ class Runner:
             system,
             conventions=conventions_with_dirs(self.workflow.dirs),
         )
-        registry.register_source("protein_pdb", system.protein.chains[0])
-        for i, chain in enumerate(system.protein.chains):
-            registry.register_source("protein_chain:%d" % i, chain)
+        if system.complex is not None:
+            registry.register_source("complex_pdb", system.complex["file"])
+            registry.register_source("protein_pdb", system.complex["file"])
+        else:
+            registry.register_source("protein_pdb", system.protein.chains[0])
+            for i, chain in enumerate(system.protein.chains):
+                registry.register_source("protein_chain:%d" % i, chain)
         for ligand in system.ligands:
             registry.register_source("ligand_sdf:%s" % ligand.name, ligand.file)
             if ligand.method == "manual":
@@ -117,12 +142,13 @@ class Runner:
         return registry
 
     def _input_hashes(self, step, system, registry) -> Dict[str, str]:
-        logicals = []
-        for logical in step.resolve_inputs(system):
-            if logical not in logicals:
-                logicals.append(logical)
         hashes = {}
-        for logical in logicals:
+        optional = set(step.optional_inputs)
+        seen = set()
+        for logical in step.resolve_inputs(system, registry):
+            if logical in seen:
+                continue
+            seen.add(logical)
             path = registry.get(logical)
             if path and os.path.isfile(path):
                 hashes[logical] = sha256_file(path)
@@ -132,9 +158,12 @@ class Runner:
         """Pre-check declared inputs; raise InputError listing missing files."""
         missing = []
         hashes = {}
-        for logical in step.resolve_inputs(system):
+        optional = set(step.optional_inputs)
+        for logical in step.resolve_inputs(system, registry):
             path = registry.get(logical)
             if path is None or not os.path.isfile(path):
+                if logical in optional:
+                    continue
                 missing.append(logical)
                 continue
             hashes[logical] = sha256_file(path)
@@ -219,8 +248,16 @@ class Runner:
                     step = self.steps[spec.name]
                     params = self._effective_params(system, spec)
                     hashes = self._input_hashes(step, system, registry)
+                    mdp_info = step.mdp_signature(
+                        params,
+                        self.workflow.resolve_mdp_dir(self._builtin_mdp_dir()),
+                    )
                     current = step_signature(
-                        step.name, step.version, params, hashes
+                        step.name,
+                        step.version,
+                        params,
+                        hashes,
+                        mdp_info=mdp_info,
                     )
                 except Exception:
                     current = None
@@ -284,8 +321,15 @@ class Runner:
                 self._handle_failure(data, sys_entry, spec, st, system, params)
                 return
 
+            mdp_info = step.mdp_signature(
+                params, self.workflow.resolve_mdp_dir(self._builtin_mdp_dir())
+            )
             signature = step_signature(
-                step.name, step.version, params, input_hashes
+                step.name,
+                step.version,
+                params,
+                input_hashes,
+                mdp_info=mdp_info,
             )
             if (
                 not self.force
@@ -314,7 +358,15 @@ class Runner:
             tx = Transaction(step_dir, stage_name=self.workflow.stage_name)
             stage = tx.begin()
             run_ctx = self._make_ctx(
-                system, spec, step, params, step_dir, stage, registry, self.workflow.resolve_mdp_dir(self._builtin_mdp_dir())
+                system,
+                spec,
+                step,
+                params,
+                step_dir,
+                stage,
+                registry,
+                self.workflow.resolve_mdp_dir(self._builtin_mdp_dir()),
+                choice_answer=st.get("choice_answer"),
             )
             started = time.time()
             try:
@@ -338,11 +390,31 @@ class Runner:
                 st["status"] = "done"
                 st["signature"] = signature
                 st["outputs"] = out_records
+                st.pop("choice", None)
+                st.pop("choice_answer", None)
                 st["finished_at"] = _now()
                 st["duration_s"] = round(time.time() - started, 1)
                 st["commands"] = run_ctx.commands
                 self.state.save(data)
                 self.log.info("[%s] 步骤 %s 完成（%.1fs）", system.name, spec.name, st["duration_s"])
+            except ChoiceError as exc:
+                tx.abort(keep_stage=True)
+                st["status"] = "awaiting_input"
+                st["choice"] = {
+                    "question": exc.question,
+                    "candidates": exc.candidates,
+                }
+                st["choice_answer"] = None
+                st["error"] = None
+                st["note"] = exc.question
+                st["finished_at"] = _now()
+                st["duration_s"] = round(time.time() - started, 1)
+                sys_entry["status"] = "paused"
+                self.state.save(data)
+                self.log.warning(
+                    "[%s] 步骤 %s 等待选择: %s", system.name, spec.name, exc.question
+                )
+                return
             except MdkitError as exc:
                 tx.abort(keep_stage=True)
                 st["status"] = "failed"
@@ -377,7 +449,7 @@ class Runner:
         on_failure = params.get("on_failure", "auto")
         if on_failure == "pause":
             st["status"] = "awaiting_input"
-            st["note"] = "步骤失败，等待人工/Codex 干预"
+            st["note"] = st.get("error") or "步骤失败，等待人工/Codex 干预"
             sys_entry["status"] = "paused"
             self.log.warning(
                 "体系 %s 在 %s 暂停等待干预；"
@@ -470,7 +542,12 @@ def cmd_skip(run_dir: str, system_name: str, step_name: str, reason: str = "", o
         return {"system": system_name, "step": step_name, "status": "skipped", "reason": st["note"]}
 
 
-def cmd_retry(run_dir: str, system_name: str, step_name: Optional[str] = None) -> dict:
+def cmd_retry(
+    run_dir: str,
+    system_name: str,
+    step_name: Optional[str] = None,
+    select: Optional[str] = None,
+) -> dict:
     state = RunState(run_dir)
     with _locked(run_dir):
         data = state.load()
@@ -482,6 +559,19 @@ def cmd_retry(run_dir: str, system_name: str, step_name: Optional[str] = None) -
         if target not in names:
             raise ConfigError("体系 %s 中不存在步骤: %s" % (system_name, target))
         idx = names.index(target)
+        if select is not None:
+            st_target = sys_entry["steps"][target]
+            choice = st_target.get("choice")
+            if not choice:
+                raise ConfigError(
+                    "步骤 %s 没有待选择的项（无 choice 记录）" % target
+                )
+            keys = [str(c["key"]) for c in choice.get("candidates", [])]
+            if str(select) not in keys:
+                raise ConfigError(
+                    "选择 %r 不在候选中: %s" % (select, ", ".join(keys))
+                )
+            st_target["choice_answer"] = str(select)
         for name in names[idx:]:
             st = sys_entry["steps"][name]
             if st.get("status") in ("done",):
@@ -498,7 +588,12 @@ def cmd_retry(run_dir: str, system_name: str, step_name: Optional[str] = None) -
         if sys_entry.get("status") in ("paused", "failed", "interrupted"):
             sys_entry["status"] = "pending"
         state.save(data)
-        return {"system": system_name, "from": target, "reset": names[idx:]}
+        return {
+            "system": system_name,
+            "from": target,
+            "reset": names[idx:],
+            "select": select,
+        }
 
 
 def cmd_rollback(run_dir: str, system_name: str, step_name: Optional[str] = None) -> dict:

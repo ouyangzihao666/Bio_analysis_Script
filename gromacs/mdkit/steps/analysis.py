@@ -10,6 +10,7 @@ from mdkit.steps.base import Step
 
 class _AnalysisStep(Step):
     env_requirements = ["gmx"]
+    optional_inputs = ["corrected_xtc", "md_xtc", "index_ndx"]
     param_schema = {
         "index": {"type": str, "default": ""},
         "tu": {"type": str, "default": "ns"},
@@ -29,16 +30,18 @@ class _AnalysisStep(Step):
     def run(self, ctx) -> None:
         self.exec_commands(ctx)
 
-    def resolve_inputs(self, system) -> list:
+    def resolve_inputs(self, system, registry=None) -> list:
         logicals = ["md_tpr"]
-        for candidate in ("corrected_xtc", "md_xtc"):
-            if self._registry_get(candidate):
-                logicals.append(candidate)
-                break
+        if registry is None:
+            logicals += ["corrected_xtc", "md_xtc"]
+        elif registry.get("corrected_xtc"):
+            logicals.append("corrected_xtc")
+        elif registry.get("md_xtc"):
+            logicals.append("md_xtc")
+        else:
+            logicals.append("md_xtc")
+        logicals.append("index_ndx")
         return logicals
-
-    def _registry_get(self, logical):
-        return None
 
 
 class RmsdStep(_AnalysisStep):

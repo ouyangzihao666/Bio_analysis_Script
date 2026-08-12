@@ -47,6 +47,9 @@ steps:
   - step: box
   - step: solvate
   - step: ions
+    params:
+      positive_ion: NA
+      negative_ion: CL
   - step: em
   - step: nvt
   - step: npt

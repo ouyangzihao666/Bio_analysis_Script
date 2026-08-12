@@ -11,7 +11,7 @@ from mdkit.steps.base import Step
 
 class ProteinPrepStep(Step):
     name = "protein_prep"
-    version = "1.1"
+    version = "1.2"
     description = "pdb2gmx 生成蛋白结构与拓扑（支持多链多聚体合并）"
     inputs = []
     outputs = [
@@ -29,7 +29,9 @@ class ProteinPrepStep(Step):
     }
     env_requirements = ["gmx"]
 
-    def resolve_inputs(self, system) -> list:
+    def resolve_inputs(self, system, registry=None) -> list:
+        if registry is not None and registry.get("split_protein_pdb"):
+            return ["split_protein_pdb"]
         logicals = ["protein_pdb"]
         logicals += [
             "protein_chain:%d" % i for i in range(len(system.protein.chains))
@@ -39,24 +41,23 @@ class ProteinPrepStep(Step):
     def run(self, ctx) -> None:
         system = ctx.system
         protein = system.protein
-        ligand_resnames = [
-            l.residue for l in system.ligands if l.residue is not None
-        ]
-        if len(protein.chains) > 1:
+        split_protein = ctx.registry.get("split_protein_pdb")
+        if split_protein:
+            source_pdb = split_protein
+        elif len(protein.chains) > 1:
             merged = ctx.path("%s_merged.pdb" % system.name)
             n = gro.merge_pdb_chains(
                 protein.chains,
                 merged,
                 remove_water=ctx.params["remove_water"],
-                remove_residues=ligand_resnames,
             )
             ctx.log.info("多链合并完成，共 %d 个原子 -> %s", n, merged)
             source_pdb = merged
         else:
             source_pdb = protein.chains[0]
-            if ctx.params["remove_water"] or ligand_resnames:
+            if ctx.params["remove_water"]:
                 clean = ctx.path("%s_clean.pdb" % system.name)
-                _strip_pdb(source_pdb, clean, ligand_resnames)
+                _strip_pdb(source_pdb, clean, [])
                 source_pdb = clean
 
         if ctx.params.get("ph") is not None:
@@ -79,14 +80,14 @@ class ProteinPrepStep(Step):
 
     def build_commands(self, ctx):
         system = ctx.system
-        ligand_resnames = [
-            l.residue for l in system.ligands if l.residue is not None
-        ]
-        if len(system.protein.chains) > 1:
+        split_protein = ctx.registry.get("split_protein_pdb")
+        if split_protein:
+            source = split_protein
+        elif len(system.protein.chains) > 1:
             source = ctx.path("%s_merged.pdb" % system.name)
         else:
             source = system.protein.chains[0]
-            if ctx.params["remove_water"] or ligand_resnames:
+            if ctx.params["remove_water"]:
                 source = ctx.path("%s_clean.pdb" % system.name)
         processed = ctx.register_output(
             "processed_gro", "%s_processed.gro" % system.name

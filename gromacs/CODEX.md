@@ -10,6 +10,9 @@
 - 体系状态：`pending / running / done / failed / paused / interrupted`
 - `mdkit status --json` 对运行中的 mdrun 注入 `progress`：`{step, time_ps, nsteps, percent}`
 - 运行目录：`work_dir`（来自 systems.yaml `work_dir` 或 `--work-dir`），状态文件 `run_status.json`，锁文件 `.mdkit.lock`
+- 拆分步骤：`split_complex`（PyMOL，复合物→蛋白+内嵌配体）、`split_ligand`（确定性解析器）、`pymol_split_ligand`（PyMOL 配体拆分），输出 logical 分别为 `split_protein_pdb`/`split_ligand_pdb:<name>` 与 `ligand_mol:<name>`；`protein_prep`/`ligand_prep` 自动优先消费拆分产物
+- 等待选择：步骤抛 `ChoiceError` 时进入 `awaiting_input` 并记录 `st["choice"]`（question+candidates），用 `ctl retry <system> <step> --select <key>` 回答；回答写入 `st["choice_answer"]` 并在重跑时注入步骤
+- 离子索引：`ions` 步骤的 `positive_ion`/`negative_ion` 为必要参数（无默认值），`index` 步骤据此生成 `Ion` 索引组
 
 ## 编排闭环
 
@@ -35,6 +38,7 @@ mdkit skip result <system> <step> --reason "修复了配体电荷" [--output log
 
 # 6. 重跑 / 回退 / 清理
 mdkit retry result <system> <step>
+mdkit retry result <system> <step> --select <key>   # 同名配体歧义选择
 mdkit rollback result <system> <step>
 mdkit clean result <system> --from <step> --yes   # 删除失效输出，谨慎使用
 
@@ -81,9 +85,14 @@ mdkit ctl retry  -q ./batch/queue.json <system> [<step>] [--force]
 mdkit ctl skip   -q ./batch/queue.json <system> <step> --reason "..."
 mdkit ctl rollback / clean -q ./batch/queue.json <system> ...
 
-# 5. 停止执行器（等在跑任务结束；再次 stop 强制终止）
+# 5. 停止执行器（首次：停止接收新任务，等在跑任务结束；再次：强制终止在跑任务，
+#    含 gmx 子进程；watch 退出码 130）
 mdkit ctl exec stop -q ./batch/queue.json
 ```
+
+复合物工作流示例步骤：`env_check` → `split_complex` → `split_ligand`（或 `pymol_split_ligand`）
+→ `protein_prep` → `ligand_prep` → `complex_merge` → ...。拆分步骤建议设 `on_failure: pause`；
+多分子 mol2/sdf 未匹配时步骤报错列出分子名并暂停，同名歧义用 `--select` 选择。
 
 资源模型：`systems.yaml` 顶层 `slots` 是**可复用模板池**
 （`0: "-ntmpi 1 -ntomp 32 -gpu_id 0"`，缺省单模板空参数），`concurrency` 为并发上限
@@ -105,7 +114,7 @@ watch 退出码：`0` 全部完成；`2` 存在 repair-timeout/失败（`--repai
 3. **坏运行不覆盖好输出**：步骤失败后正式目录保持原状（事务化），不要用 `rm` 手动清理；用 `clean`。
 4. **不绕过 `ctx.run_gmx()`**：外部步骤也必须经统一的命令执行器（无 shell、超时、日志、组选择校验）。
 5. **干预点**：`awaiting_input` 状态必须先 `skip`（放行）或 `retry`（重跑），不要直接改 `run_status.json`。
-6. **环境**：用 `mdkit` conda 环境（见 README 环境要求）执行；`doctor` 明确报缺失的工具不要硬跑配体步骤。
+6. **环境**：用 `mdkit` conda 环境（见 README 环境要求）执行；`doctor` 明确报缺失的工具不要硬跑配体步骤；复合物体系需 pymol。
 
 ## 状态机速查
 
@@ -115,4 +124,5 @@ pending → running → done
                 ↘ failed ──(continue)──▶ 本体系剩余步骤 skipped，其他体系继续
 done ──(参数/输入变化)──▶ stale（重算）
 running ──(SIGINT/SIGTERM)──▶ interrupted（可 --from 续跑）
+失败/同名歧义 ──(on_failure=pause / ChoiceError)──▶ awaiting_input ──(retry / retry --select)──▶ pending
 ```

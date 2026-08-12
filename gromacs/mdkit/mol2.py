@@ -89,6 +89,33 @@ def write_molecule(path: str, block: Dict) -> None:
         fh.write("\n".join(block["lines"]) + "\n")
 
 
+def rename_molecule_name(path: str, new_name: str) -> None:
+    """Rewrite the molecule name line right after @<TRIPOS>MOLECULE.
+
+    Used before acpype so the output directory/file names follow the
+    GROMACS molecule name (``gmx_name``) instead of whatever name the
+    source file carried.
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        lines = fh.read().splitlines()
+    replaced = False
+    for i, line in enumerate(lines):
+        if line.strip() == MOLECULE_HEADER:
+            j = i + 1
+            while j < len(lines) and (
+                not lines[j].strip() or lines[j].strip().startswith("#")
+            ):
+                j += 1
+            if j < len(lines):
+                lines[j] = new_name
+                replaced = True
+            break
+    if not replaced:
+        raise ConfigError("mol2 文件中未找到 MOLECULE 名称行: %s" % path)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
 def extract_molecule(src_path: str, out_path: str, selector) -> Dict:
     """Write the molecule block matching ``selector`` (name/substructure/index)."""
     blocks = parse_molecules(src_path)

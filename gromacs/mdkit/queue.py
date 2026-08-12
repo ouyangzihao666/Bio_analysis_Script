@@ -65,7 +65,9 @@ def atomic_write_json(path: str, data: dict) -> None:
     fd, tmp = tempfile.mkstemp(prefix=".queue_", dir=os.path.dirname(path))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
+            # 不排序：queue.json 的 items 顺序必须与输入 systems 文件一致，
+            # 新增体系按 ctl queue add 顺序追加。
+            json.dump(data, fh, ensure_ascii=False, indent=2)
             fh.write("\n")
         os.replace(tmp, path)
     except BaseException:

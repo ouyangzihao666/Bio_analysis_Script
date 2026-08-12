@@ -43,5 +43,5 @@ class BoxStep(Step):
             args.append("-c")
         return [("gmx", args, None)]
 
-    def resolve_inputs(self, system) -> list:
+    def resolve_inputs(self, system, registry=None) -> list:
         return ["complex_gro"] if system.has_ligands else ["processed_gro"]

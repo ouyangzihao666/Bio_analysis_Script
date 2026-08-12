@@ -33,5 +33,18 @@ class InputError(StepError):
     """A required input file is missing or unreadable."""
 
 
+class ChoiceError(StepError):
+    """A step needs the user to pick one of several candidates.
+
+    The runner converts this into an ``awaiting_input`` step with a recorded
+    ``choice`` block; ``ctl retry --select <key>`` answers it.
+    """
+
+    def __init__(self, message, question, candidates, details=None):
+        super().__init__(message, details)
+        self.question = question
+        self.candidates = candidates  # list of {"key": str, "label": str}
+
+
 class RunError(MdkitError):
     """A run failed at the orchestration level."""

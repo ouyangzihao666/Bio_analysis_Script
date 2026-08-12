@@ -27,7 +27,6 @@ systems:
       - name: LIG2
         file: inputs/ligand_2.sdf
         charge: -1
-        count: 2          # LIG2 两拷贝
     overrides:
       nvt:
         mdp_overrides:
@@ -70,12 +69,12 @@ systems:
         names: [FDME, BDO]
         charge: 0
 
-  # 配体已在蛋白 PDB 内（HETATM 残基 UNK），自动提取并按残基名清洗蛋白
-  - name: complex_pdb_ligand
-    protein:
-      file: inputs/5xjh-BHET.pdb
-    ligands:
-      - name: BHET
-        file: inputs/5xjh-BHET.pdb
-        residue: UNK
-        charge: 0
+# 复合物输入示例（需要真实文件才能通过校验，因此注释掉；使用方式）：
+# 复合物 PDB 同时包含蛋白与配体，split_complex 用 PyMOL 拆分。
+# 配体名即 PDB 残基名；同名配体按 resid 顺序取出并加 resid 后缀区分。
+#   - name: complex_pdb_ligand
+#     complex:
+#       file: inputs/5xjh-BHET.pdb
+#       ligands:
+#         - name: UNK
+#           charge: 0

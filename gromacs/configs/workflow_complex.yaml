@@ -6,7 +6,14 @@ mdp_dir: mdp
 steps:
   - step: env_check
     params:
-      tools: [obabel, antechamber, parmchk2, acpype]
+      tools: [obabel, antechamber, parmchk2, acpype, pymol]
+  - step: split_complex
+    params:
+      on_failure: pause
+  # 配体分离默认用确定性解析器；如改用 PyMOL 拆分，把下面步骤换成 pymol_split_ligand
+  - step: split_ligand
+    params:
+      on_failure: pause
   - step: protein_prep
     params:
       force_field: amber99sb-ildn

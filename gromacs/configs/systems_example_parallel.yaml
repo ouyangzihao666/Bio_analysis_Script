@@ -47,7 +47,6 @@ systems:
       - name: LIG2
         file: inputs/ligand_2.sdf
         charge: -1
-        count: 2          # LIG2 两拷贝
 
   # 多聚体 + 多配体，不绑定槽位
   - name: multimer_D

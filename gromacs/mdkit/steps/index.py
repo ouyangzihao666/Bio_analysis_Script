@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mdkit import gro
+from mdkit.exceptions import StepError
 from mdkit.steps.base import Step
 
 
@@ -13,6 +14,22 @@ class IndexStep(Step):
     inputs = ["ions_gro", "processed_gro"]
     outputs = [("index_ndx", "{system}.ndx", False)]
     param_schema = {}
+
+    def _ion_names(self, ctx):
+        ions = ctx.step_params("ions")
+        if ions is None:
+            raise StepError(
+                "index 步骤需要工作流中的 ions 步骤提供阴阳离子名称"
+                "（positive_ion/negative_ion），但未找到 ions 步骤"
+            )
+        pos = ions.get("positive_ion")
+        neg = ions.get("negative_ion")
+        if not pos or not neg:
+            raise StepError(
+                "生成 Ion 索引组需要显式配置 positive_ion/negative_ion，"
+                "未提供默认值"
+            )
+        return (pos, neg)
 
     def run(self, ctx) -> None:
         structure = ctx.get_input("ions_gro")
@@ -34,10 +51,11 @@ class IndexStep(Step):
             ligand_counts,
             [l.name for l in ctx.system.ligands],
             out,
+            self._ion_names(ctx),
         )
         ctx.log.info("索引生成完成（%d 原子）: %s", n, out)
 
-    def resolve_inputs(self, system) -> list:
+    def resolve_inputs(self, system, registry=None) -> list:
         logicals = list(self.inputs)
         if system.has_ligands:
             logicals.append("complex_gro")

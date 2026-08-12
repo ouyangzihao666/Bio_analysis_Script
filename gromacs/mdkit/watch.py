@@ -70,6 +70,7 @@ class Watch:
         self._interrupted = False
         self._stop_requested = False
         self._sig_count = 0
+        self._empty_logged = False
 
     # -- setup ---------------------------------------------------------
     def _setup(self) -> None:
@@ -326,7 +327,12 @@ class Watch:
                         ", ".join(resume),
                     )
             if action == "retry":
-                cmd_retry(item["run_dir"], item["name"], step)
+                cmd_retry(
+                    item["run_dir"],
+                    item["name"],
+                    step,
+                    select=pending.get("select"),
+                )
             else:
                 cmd_rollback(item["run_dir"], item["name"], step)
         elif action == "skip":
@@ -452,7 +458,26 @@ class Watch:
                 self._shutdown()
                 self._log("watch 结束，退出码 %d", code)
                 return code
-            time.sleep(self.interval)
+            empty = False
+            if self.queue is not None:
+                try:
+                    empty = not self.queue.load().get("items")
+                except Exception:
+                    empty = False
+            if empty:
+                if not self._empty_logged:
+                    self._log(
+                        "队列为空，watch 持续等待；可 ctl queue add 加入体系"
+                        "（Ctrl+C 或 ctl exec stop 退出）"
+                    )
+                    self._empty_logged = True
+            elif self._empty_logged:
+                self._empty_logged = False
+            # 停止流程中缩短轮询粒度：强制终止的子进程退出后能尽快收尾退出
+            if self._interrupted or self._stop_requested:
+                time.sleep(min(self.interval, 2.0))
+            else:
+                time.sleep(self.interval)
 
     def _poll_items(self, items: List[dict], data) -> None:
         # 1. intervention on running systems -> graceful SIGTERM

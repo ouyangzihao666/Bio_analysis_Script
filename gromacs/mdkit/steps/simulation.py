@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 
 from mdkit.cliargs import merge_cli_options
@@ -25,6 +26,23 @@ class _SimulationStep(Step):
     }
     env_requirements = ["gmx"]
     mdp_file = "md.mdp"
+
+    def mdp_signature(self, params: dict, mdp_dir: str):
+        """mdp provenance: template path + content hash + rendered overrides."""
+        from mdkit.mdp import resolve_template, sha256_text
+
+        spec = params.get("mdp")
+        if not spec:
+            return None
+        template = resolve_template(spec, mdp_dir)
+        with open(template, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        overrides = params.get("mdp_overrides") or {}
+        return {
+            "template": os.path.abspath(template),
+            "template_sha256": sha256_text(text),
+            "overrides": {str(k): str(v) for k, v in overrides.items()},
+        }
 
     def run(self, ctx) -> None:
         ctx.render_mdp(ctx.params["mdp"], ctx.params["mdp_overrides"], self._mdp_name())

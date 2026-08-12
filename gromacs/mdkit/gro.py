@@ -12,6 +12,53 @@ WATER_RES = {"SOL", "HOH", "W", "TIP3", "TIP4", "TIP5", "SPCE", "H2O"}
 BACKBONE_ATOMS = {"N", "CA", "C", "O"}
 
 
+def count_pdb_models(path: str) -> int:
+    """Count MODEL records in a PDB file."""
+    n = 0
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith("MODEL"):
+                n += 1
+    return n
+
+
+def scan_pdb_residues(path: str) -> dict:
+    """Return ``{resname: [ResidRec, ...]}`` for a PDB file.
+
+    Each ResidRec is a dict: {chain, resid, natoms}. Residues are ordered by
+    (chain, resid) numerically; altloc duplicates are counted once per atom
+    serial. Also returns the number of MODEL records under the ``models``
+    key so callers can reject multi-model inputs.
+    """
+    if not os.path.isfile(path):
+        raise ConfigError("PDB 文件不存在: %s" % path)
+    models = 0
+    by_key = {}
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.startswith("MODEL"):
+                models += 1
+                continue
+            if not (line.startswith("ATOM") or line.startswith("HETATM")):
+                continue
+            atom = _parse_pdb_atom(line)
+            try:
+                resid = int(atom["resseq"])
+            except ValueError:
+                continue
+            key = (atom["resname"].upper(), atom["chain"], resid)
+            by_key.setdefault(key, set()).add(atom["serial"])
+    grouped = {}
+    for (resname, chain, resid), serials in by_key.items():
+        grouped.setdefault(resname, []).append(
+            {"chain": chain, "resid": resid, "natoms": len(serials)}
+        )
+    for recs in grouped.values():
+        recs.sort(key=lambda r: (r["chain"], r["resid"]))
+    grouped["models"] = models
+    return grouped
+
+
 def read_gro(path: str) -> Dict:
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         lines = fh.read().splitlines()
@@ -82,11 +129,17 @@ def build_index(
     ligand_atom_counts: List[int],
     ligand_names: List[str],
     out_path: str,
+    ion_names,
 ) -> int:
     """Write a custom .ndx with protein / ligand / water / ion groups.
 
-    Returns total atom count.
+    ``ion_names`` is the pair of configured positive/negative ion residue
+    names (no defaults are applied); only atoms matching them (case
+    insensitive) enter the ``Ion`` group. Returns total atom count.
     """
+    if not ion_names or len(ion_names) != 2:
+        raise ConfigError("build_index 需要阴阳离子名称（positive_ion/negative_ion）")
+    ion_set = {str(n).upper() for n in ion_names}
     data = read_gro(structure_gro)
     natoms = data["natoms"]
     if protein_atoms + sum(ligand_atom_counts) > natoms:
@@ -122,13 +175,14 @@ def build_index(
             groups["C-alpha"].append(idx)
         if a["atomname"] in BACKBONE_ATOMS:
             groups["Backbone"].append(idx)
-    for a in data["atoms"][protein_atoms:]:
+    ligand_end = protein_atoms + sum(ligand_atom_counts)
+    for a in data["atoms"][ligand_end:]:
         idx = a["atomnum"]
         resname = a["resname"].upper()
         if resname in WATER_RES:
             groups["Water"].append(idx)
             groups["SOL"].append(idx)
-        else:
+        elif resname in ion_set:
             groups["Ion"].append(idx)
 
     groups["Protein_Ligand"] = sorted(groups["Protein"] + groups["Ligand"])
@@ -302,6 +356,7 @@ def count_pdb_residue_components(pdb_path: str, resname: str) -> int:
 def _parse_pdb_atom(line: str) -> Dict:
     try:
         return {
+            "serial": int(line[6:11]),
             "name": line[12:16].strip(),
             "altloc": line[16],
             "resname": line[17:20].strip(),

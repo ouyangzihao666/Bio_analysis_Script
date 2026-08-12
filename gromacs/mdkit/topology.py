@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from mdkit.exceptions import ConfigError
 
@@ -200,6 +200,105 @@ def merge_ligand_itps(itp_paths, ligand_names, out_path: str) -> None:
         out_lines.extend(block)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out_lines) + "\n")
+
+
+def prepare_ligand_itp(src_path: str, dst_path: str, kept_types=None) -> dict:
+    """Copy an itp, optionally stripping its ``[ atomtypes ]`` section.
+
+    GROMACS only allows one ``[ atomtypes ]`` section per topology, so when
+    including several ligand itps by filename only the first one keeps its
+    atomtypes; later ones are stripped after verifying that no type name is
+    redefined with different parameters. Atom types that only appear in
+    later itps are recorded in ``kept_types``; callers must merge them into
+    the first itp (see ``append_atomtypes``).
+
+    ``kept_types`` maps type name -> canonical line and is updated in place.
+    """
+    if kept_types is None:
+        kept_types = {}
+    with open(src_path, "r", encoding="utf-8", errors="replace") as fh:
+        lines = fh.read().splitlines()
+    out = []
+    in_atomtypes = False
+    first = not kept_types
+    for line in lines:
+        if _SECTION_HEADER.match(line):
+            if line.strip().lower() == "[ atomtypes ]":
+                in_atomtypes = True
+                if not first:
+                    continue
+                out.append(line)
+                continue
+            in_atomtypes = False
+            out.append(line)
+            continue
+        if in_atomtypes:
+            stripped = line.strip()
+            if stripped and not stripped.startswith(";"):
+                fields = stripped.split()
+                if len(fields) >= 2:
+                    tname = fields[0]
+                    if tname in kept_types and kept_types[tname] != stripped:
+                        raise ConfigError(
+                            "不同配体定义了不同的原子类型 %s: %r vs %r"
+                            % (tname, kept_types[tname], stripped)
+                        )
+                    if tname not in kept_types:
+                        kept_types[tname] = stripped
+            if not first:
+                continue
+        out.append(line)
+    os.makedirs(os.path.dirname(os.path.abspath(dst_path)), exist_ok=True)
+    with open(dst_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(out) + "\n")
+    return kept_types
+
+
+def append_atomtypes(itp_path: str, entries: Dict[str, str]) -> None:
+    """Append atomtype lines into the ``[ atomtypes ]`` section of an itp.
+
+    GROMACS 2026 requires a single ``[ atomtypes ]`` section before the
+    first ``[ moleculetype ]``. When several ligand itps are included,
+    atom types introduced by later itps are merged into the first itp's
+    section instead of being dropped. Entries whose type name already
+    exists in the section are skipped.
+
+    ``entries`` maps atom type name -> full atomtypes line.
+    """
+    if not entries:
+        return
+    with open(itp_path, "r", encoding="utf-8", errors="replace") as fh:
+        lines = fh.read().splitlines()
+    at_idx = None
+    for i, ln in enumerate(lines):
+        if _SECTION_HEADER.match(ln) and ln.strip().lower() == "[ atomtypes ]":
+            at_idx = i
+            break
+    existing = set()
+    if at_idx is not None:
+        for ln in lines[at_idx + 1 :]:
+            if _SECTION_HEADER.match(ln):
+                break
+            s = ln.strip()
+            if s and not s.startswith(";"):
+                fields = s.split()
+                if len(fields) >= 2:
+                    existing.add(fields[0])
+    block = [entries[n] for n in sorted(entries) if n not in existing]
+    if not block:
+        return
+    if at_idx is None:
+        new_lines = ["[ atomtypes ]"] + block + [""] + lines
+    else:
+        end = len(lines)
+        for j in range(at_idx + 1, len(lines)):
+            if _SECTION_HEADER.match(lines[j]):
+                end = j
+                break
+        new_lines = lines[:end] + block + [""] + lines[end:]
+    os.makedirs(os.path.dirname(os.path.abspath(itp_path)), exist_ok=True)
+    with open(itp_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(new_lines) + "\n")
 
 
 def count_components(itp_path: str):

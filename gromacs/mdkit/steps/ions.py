@@ -8,7 +8,7 @@ from mdkit.steps.base import Step
 
 class IonsStep(Step):
     name = "ions"
-    version = "1.1"
+    version = "1.2"
     description = "grompp + genion 添加离子中和体系"
     inputs = ["solv_gro", "solvated_top"]
     outputs = [
@@ -17,8 +17,10 @@ class IonsStep(Step):
         ("ions_tpr", "{system}_ions.tpr", False),
     ]
     param_schema = {
-        "positive_ion": {"type": str, "default": "NA"},
-        "negative_ion": {"type": str, "default": "CL"},
+        # No defaults on purpose: the index step builds the Ion group from
+        # these names, so silently assuming NA/CL would mislabel ions.
+        "positive_ion": {"type": str},
+        "negative_ion": {"type": str},
         "concentration": {"type": float, "default": 0.15},
         "neutral": {"type": bool, "default": True},
         "mdp": {"type": str, "default": "ions"},
@@ -26,6 +28,22 @@ class IonsStep(Step):
         "maxwarn": {"type": int, "default": 5},
     }
     env_requirements = ["gmx"]
+
+    def mdp_signature(self, params: dict, mdp_dir: str):
+        from mdkit.mdp import resolve_template, sha256_text
+
+        spec = params.get("mdp")
+        if not spec:
+            return None
+        template = resolve_template(spec, mdp_dir)
+        with open(template, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+        overrides = params.get("mdp_overrides") or {}
+        return {
+            "template": template,
+            "template_sha256": sha256_text(text),
+            "overrides": {str(k): str(v) for k, v in overrides.items()},
+        }
 
     def run(self, ctx) -> None:
         top = ctx.get_input("solvated_top")

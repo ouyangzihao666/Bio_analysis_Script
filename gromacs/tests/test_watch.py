@@ -36,6 +36,9 @@ def _workflow(ws, extra_steps=""):
         "  - step: box\n"
         "  - step: solvate\n"
         "  - step: ions\n"
+        "    params:\n"
+        "      positive_ion: NA\n"
+        "      negative_ion: CL\n"
         "  - step: em\n"
         "  - step: nvt\n"
         "  - step: npt\n"
@@ -177,6 +180,161 @@ class CtlUnitTests(unittest.TestCase):
         w.spawned = {"a": {"template": 0}, "b": {"template": 1}}
         self.assertEqual(w._least_loaded([]), 0)
 
+    def test_lock_holder_pid(self):
+        from mdkit.ctl import _lock_holder_pid
+
+        lock_path = os.path.join(self.ws.root, ".mdkit.lock")
+        holder = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import fcntl, os, sys, time\n"
+                    "fh = open(sys.argv[1], 'w')\n"
+                    "fcntl.flock(fh, fcntl.LOCK_EX)\n"
+                    "fh.write(str(os.getpid()))\n"
+                    "fh.flush()\n"
+                    "time.sleep(30)\n"
+                ),
+                lock_path,
+            ],
+            start_new_session=True,
+        )
+        try:
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                pid = _lock_holder_pid(lock_path)
+                if pid == holder.pid:
+                    break
+                time.sleep(0.05)
+            self.assertEqual(_lock_holder_pid(lock_path), holder.pid)
+        finally:
+            holder.kill()
+            holder.wait()
+        self.assertIsNone(_lock_holder_pid(lock_path))
+
+    def test_kill_run_processes(self):
+        from mdkit.ctl import _kill_run_processes, _lock_holder_pid
+
+        run_dir = os.path.join(self.ws.root, "runA")
+        os.makedirs(run_dir, exist_ok=True)
+        lock_path = os.path.join(run_dir, ".mdkit.lock")
+        holder = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import fcntl, os, sys, time\n"
+                    "fh = open(sys.argv[1], 'w')\n"
+                    "fcntl.flock(fh, fcntl.LOCK_EX)\n"
+                    "fh.write(str(os.getpid()))\n"
+                    "fh.flush()\n"
+                    "time.sleep(60)\n"
+                ),
+                lock_path,
+            ],
+            start_new_session=True,
+        )
+        try:
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                if _lock_holder_pid(lock_path) == holder.pid:
+                    break
+                time.sleep(0.05)
+            killed = _kill_run_processes(
+                {"runA": {"status": "running", "run_dir": run_dir}}
+            )
+            self.assertEqual(killed, ["runA"])
+            holder.wait(timeout=10)
+            self.assertNotEqual(holder.returncode, 0)
+        finally:
+            if holder.poll() is None:
+                holder.kill()
+                holder.wait()
+
+    def test_ctl_init_keeps_input_system_order(self):
+        systems = self.ws.write(
+            "systems.yaml",
+            "work_dir: ./result\n"
+            "systems:\n"
+            "  - name: sysB\n    protein: {file: inputs/p.pdb}\n"
+            "  - name: sysA\n    protein: {file: inputs/p.pdb}\n"
+            "  - name: sysC\n    protein: {file: inputs/p.pdb}\n",
+        )
+        wf = _workflow(self.ws)
+        outbase = os.path.join(self.ws.root, "out")
+        r = _run_cli(
+            os.environ.copy(),
+            "ctl",
+            "init",
+            "-w",
+            wf,
+            "-s",
+            systems,
+            "--work-dir-base",
+            outbase,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        qp = os.path.join(outbase, "queue.json")
+        data = _load_json(qp)
+        self.assertEqual(list(data["items"]), ["sysB", "sysA", "sysC"])
+        r2 = _run_cli(
+            os.environ.copy(), "ctl", "status", "-q", qp, "--json"
+        )
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+        status = json.loads(r2.stdout)
+        self.assertEqual(list(status["items"]), ["sysB", "sysA", "sysC"])
+
+    def test_queue_sync_reorders_to_input_file(self):
+        systems = self.ws.write(
+            "systems.yaml",
+            "work_dir: ./result\n"
+            "systems:\n"
+            "  - name: sysA\n    protein: {file: inputs/p.pdb}\n"
+            "  - name: sysB\n    protein: {file: inputs/p.pdb}\n"
+            "  - name: sysC\n    protein: {file: inputs/p.pdb}\n",
+        )
+        wf = _workflow(self.ws)
+        outbase = os.path.join(self.ws.root, "out")
+        r = _run_cli(
+            os.environ.copy(),
+            "ctl",
+            "init",
+            "-w",
+            wf,
+            "-s",
+            systems,
+            "--work-dir-base",
+            outbase,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        qp = os.path.join(outbase, "queue.json")
+        # 模拟旧队列：打乱 items 顺序，并保留一个 item 的状态
+        q = Queue(qp)
+        data = q.load()
+        items = data["items"]
+        data["items"] = {
+            "sysC": items["sysC"],
+            "sysA": items["sysA"],
+            "sysB": items["sysB"],
+        }
+        data["items"]["sysB"]["status"] = "done"
+        q.save(data)
+        # 修改 systems.yaml 顺序（同一路径覆盖写入），sync 后应跟随新顺序
+        self.ws.write(
+            "systems.yaml",
+            "work_dir: ./result\n"
+            "systems:\n"
+            "  - name: sysB\n    protein: {file: inputs/p.pdb}\n"
+            "  - name: sysC\n    protein: {file: inputs/p.pdb}\n"
+            "  - name: sysA\n    protein: {file: inputs/p.pdb}\n",
+        )
+        r2 = _run_cli(os.environ.copy(), "ctl", "queue", "sync", "-q", qp)
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+        data2 = _load_json(qp)
+        self.assertEqual(list(data2["items"]), ["sysB", "sysC", "sysA"])
+        self.assertEqual(data2["items"]["sysB"]["status"], "done")
+
 
 # ----------------------------------------------------------------------
 # integration tests (fake gmx)
@@ -302,6 +460,50 @@ class WatchIntegrationTests(unittest.TestCase):
         finally:
             fh.close()
         self.assertEqual(rc, 130)
+
+    def test_forced_stop_kills_running_tasks(self):
+        systems = self.ws.write(
+            "systems.yaml",
+            "systems:\n"
+            "  - name: protA\n"
+            "    protein: {file: inputs/protein_A.pdb}\n",
+        )
+        self._init_queue(systems)
+        env = self._env(FAKE_GMX_SLOW_MD="1", FAKE_GMX_SLOW_LOOPS="60")
+        wlog = os.path.join(self.ws.root, "watch.log")
+        proc, fh = _start_watch(
+            env, wlog, "--queue", self.qp, "--interval", "0.01"
+        )
+        try:
+            deadline = time.time() + 60
+            while time.time() < deadline:
+                data = _load_json(self.qp)
+                if data["items"]["protA"]["status"] == "running":
+                    rs_path = os.path.join(self.outbase, "protA", "run_status.json")
+                    if os.path.isfile(rs_path):
+                        rs = _load_json(rs_path)
+                        if rs["systems"]["protA"]["steps"]["md"]["status"] == "running":
+                            break
+                time.sleep(0.3)
+            r1 = _run_cli(env, "ctl", "exec", "stop", "-q", self.qp)
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            # 第二次 stop 为强制终止：应杀死 mdrun 子进程并让 watch 收尾退出
+            r2 = _run_cli(env, "ctl", "exec", "stop", "-q", self.qp)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("killed", r2.stdout)
+            rc = proc.wait(timeout=60)
+        finally:
+            fh.close()
+        self.assertEqual(rc, 130)
+        data = _load_json(self.qp)
+        self.assertNotEqual(data["items"]["protA"]["status"], "running")
+        # mdrun 子进程（deffnm protA_md）应已被终止
+        out = subprocess.run(
+            ["pgrep", "-f", "deffnm protA_md"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(out.returncode, 0, out.stdout)
 
     def test_intervention_checkpoint_resume(self):
         systems = self.ws.write(

@@ -154,6 +154,9 @@ class BenchIntegrationTests(unittest.TestCase):
             "  - step: box\n"
             "  - step: solvate\n"
             "  - step: ions\n"
+            "    params:\n"
+            "      positive_ion: NA\n"
+            "      negative_ion: CL\n"
             "  - step: em\n"
             "  - step: nvt\n"
             "  - step: npt\n"
@@ -239,13 +242,14 @@ class BenchIntegrationTests(unittest.TestCase):
         from mdkit.bench import run_bench
 
         with patch.dict(os.environ, env):
-            code = run_bench(
-                os.path.join(self.ws.root, "workflow.yaml"),
-                os.path.join(self.ws.root, "systems.yaml"),
-                base,
-                os.path.join(self.ws.root, "bench.yaml"),
-                log=None,
-            )
+            with patch("mdkit.bench.SAMPLE_INTERVAL", 0.05):
+                code = run_bench(
+                    os.path.join(self.ws.root, "workflow.yaml"),
+                    os.path.join(self.ws.root, "systems.yaml"),
+                    base,
+                    os.path.join(self.ws.root, "bench.yaml"),
+                    log=None,
+                )
         self.assertEqual(code, 0)
         bench_file = os.path.join(base, "t1", "benchmark.json")
         self.assertTrue(os.path.isfile(bench_file))
@@ -327,7 +331,9 @@ elif sub == "mdrun":
     if name:
         with open(name + ".log", "w") as fh:
             fh.write("Step Time\n  1500000 3000.00000\n")
-        time.sleep(25)
+        # md 步骤保留足够时长让采样器在 5s 轮询间隔内捕获；
+        # 其余模拟步骤快速通过。
+        time.sleep(6 if name.endswith("_md") else 0.2)
         for ext in ("gro", "edr", "cpt", "xtc"):
             open(name + "." + ext, "w").write(SYSTEM_GRO if ext == "gro" else "x")
 sys.exit(0)
